@@ -1,0 +1,58 @@
+# Python virtual environments and caches
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Node.js dependencies and build output
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.yarn/
+.pnp.*
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+# Test and tooling artifacts
+coverage/
+*.lcov
+.nyc_output/
+.cache/
+*.tmp
+*.temp
+
+# Environment variable files
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
