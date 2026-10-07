@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -9,6 +11,13 @@ class OpeningStockCreate(BaseModel):
     store_id: int | None = None
     godown_id: int | None = None
     quantity: int = Field(gt=0)
+    cost_price: Decimal = Field(default=Decimal("0.00"), ge=0)
+
+
+class InventoryCostPriceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cost_price: Decimal = Field(ge=0)
 
 
 class InventoryTransferCreate(BaseModel):
@@ -46,6 +55,7 @@ class InventoryListItem(BaseModel):
     quantity: int
     reserved_quantity: int
     available_quantity: int
+    cost_price: Decimal
 
 
 class InventoryListResponse(BaseModel):

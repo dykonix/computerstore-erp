@@ -3,7 +3,11 @@ from sqlalchemy.orm import Session
 from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
 from app.repositories.inventory_repository import InventoryRepository
-from app.schemas.inventory import InventoryTransferCreate, OpeningStockCreate
+from app.schemas.inventory import (
+    InventoryCostPriceUpdate,
+    InventoryTransferCreate,
+    OpeningStockCreate,
+)
 
 
 class InventoryNotFoundError(Exception):
@@ -34,7 +38,7 @@ class InventoryService:
                 raise InventoryValidationError("Godown does not exist in the current tenant")
             if self.repository.get_inventory_at_location(session, tenant_id, request.product_id, request.store_id, request.godown_id) is not None:
                 raise InventoryValidationError("Inventory balance already exists at this location")
-            inventory = self.repository.add_inventory(session, Inventory(tenant_id=tenant_id, product_id=request.product_id, store_id=request.store_id, godown_id=request.godown_id, quantity=request.quantity, reserved_quantity=0))
+            inventory = self.repository.add_inventory(session, Inventory(tenant_id=tenant_id, product_id=request.product_id, store_id=request.store_id, godown_id=request.godown_id, quantity=request.quantity, reserved_quantity=0, cost_price=request.cost_price))
             self.repository.add_movement(session, InventoryMovement(tenant_id=tenant_id, product_id=request.product_id, supplier_id=supplier.id, movement_type="OPENING", quantity=request.quantity, to_store_id=request.store_id, to_godown_id=request.godown_id))
             return inventory
 
@@ -126,6 +130,7 @@ class InventoryService:
                         godown_id=request.destination_godown_id,
                         quantity=request.quantity,
                         reserved_quantity=0,
+                        cost_price=source.cost_price,
                     ),
                 )
             else:
@@ -153,6 +158,22 @@ class InventoryService:
         if row is None:
             raise InventoryNotFoundError("Inventory record not found")
         return row
+
+    def update_inventory_cost_price(
+        self,
+        session: Session,
+        tenant_id: int,
+        inventory_id: int,
+        request: InventoryCostPriceUpdate,
+    ) -> Inventory:
+        with session.begin():
+            inventory = self.repository.get_inventory_entity(
+                session, tenant_id, inventory_id
+            )
+            if inventory is None:
+                raise InventoryNotFoundError("Inventory record not found")
+            inventory.cost_price = request.cost_price
+            return self.repository.update_inventory(session, inventory)
 
     def list_inventory(self, session: Session, tenant_id: int, page: int, page_size: int):
         return self.repository.list_inventory(session, tenant_id, (page - 1) * page_size, page_size), self.repository.count_inventory(session, tenant_id)

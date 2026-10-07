@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import {
   createProduct,
+  createProductPrice,
+  fetchCurrentProductPrice,
   fetchProduct,
   fetchProductFormData,
   fetchProducts,
   updateProduct,
+  updateProductPrice,
 } from '../api/productApi'
-import type { ProductCreateRequest, ProductFormData, ProductListItem, ProductResponse } from '../api/productApi'
+import type { ProductCreateRequest, ProductFormData, ProductListItem, ProductPriceResponse, ProductPriceWriteRequest, ProductResponse } from '../api/productApi'
 import ProductForm from '../components/ProductForm'
 import ProductList from '../components/ProductList'
 
@@ -19,6 +22,7 @@ export default function ProductMaster() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [editingProduct, setEditingProduct] = useState<ProductResponse | null>(null)
+  const [editingPrice, setEditingPrice] = useState<ProductPriceResponse | null>(null)
   const [editingProductId, setEditingProductId] = useState<number | null>(null)
 
   async function loadProducts() {
@@ -47,17 +51,24 @@ export default function ProductMaster() {
     void load()
   }, [])
 
-  async function handleSubmit(payload: ProductCreateRequest) {
+  async function handleSubmit(payload: { product: ProductCreateRequest; pricing: ProductPriceWriteRequest }) {
     setSubmitting(true)
     setError('')
     setSuccess('')
     try {
       if (editingProduct) {
-        await updateProduct(editingProduct.id, payload)
+        await updateProduct(editingProduct.id, payload.product)
+        if (editingPrice) {
+          await updateProductPrice(editingProduct.id, editingPrice.id, payload.pricing)
+        } else {
+          await createProductPrice(editingProduct.id, payload.pricing)
+        }
         setSuccess('Product updated successfully.')
         setEditingProduct(null)
+        setEditingPrice(null)
       } else {
-        await createProduct(payload)
+        const product = await createProduct(payload.product)
+        await createProductPrice(product.id, payload.pricing)
         setSuccess('Product created successfully.')
       }
       await loadProducts()
@@ -73,8 +84,15 @@ export default function ProductMaster() {
     setError('')
     setSuccess('')
     setEditingProductId(productId)
+    setEditingProduct(null)
+    setEditingPrice(null)
     try {
-      setEditingProduct(await fetchProduct(productId))
+      const [product, price] = await Promise.all([
+        fetchProduct(productId),
+        fetchCurrentProductPrice(productId),
+      ])
+      setEditingProduct(product)
+      setEditingPrice(price)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load product.')
@@ -99,7 +117,7 @@ export default function ProductMaster() {
         <div className="loading-panel">Preparing your product workspace...</div>
       ) : (
         <>
-          <ProductForm key={editingProduct?.id ?? 'create'} {...formData} options={formData.attribute_options} categoryAttributes={formData.category_attributes} submitting={submitting} editingProduct={editingProduct} onSubmit={handleSubmit} onCancelEdit={() => setEditingProduct(null)} />
+          <ProductForm key={editingProduct?.id ?? 'create'} {...formData} options={formData.attribute_options} categoryAttributes={formData.category_attributes} submitting={submitting} editingProduct={editingProduct} editingPrice={editingPrice} onSubmit={handleSubmit} onCancelEdit={() => { setEditingProduct(null); setEditingPrice(null) }} />
           <ProductList products={products} loading={listLoading} onEdit={handleEdit} editingProductId={editingProductId} />
         </>
       )}

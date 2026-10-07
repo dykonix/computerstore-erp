@@ -8,6 +8,8 @@ import type {
   CategoryAttribute,
   ProductAttributeValueCreate,
   ProductCreateRequest,
+  ProductPriceResponse,
+  ProductPriceWriteRequest,
   ProductResponse,
 } from '../api/productApi'
 
@@ -19,7 +21,8 @@ interface ProductFormProps {
   categoryAttributes: CategoryAttribute[]
   submitting: boolean
   editingProduct: ProductResponse | null
-  onSubmit: (payload: ProductCreateRequest) => Promise<void>
+  editingPrice: ProductPriceResponse | null
+  onSubmit: (payload: { product: ProductCreateRequest; pricing: ProductPriceWriteRequest }) => Promise<void>
   onCancelEdit: () => void
 }
 
@@ -56,6 +59,7 @@ export default function ProductForm({
   categoryAttributes,
   submitting,
   editingProduct,
+  editingPrice,
   onSubmit,
   onCancelEdit,
 }: ProductFormProps) {
@@ -64,6 +68,8 @@ export default function ProductForm({
   const [sku, setSku] = useState(() => editingProduct?.sku ?? '')
   const [name, setName] = useState(() => editingProduct?.name ?? '')
   const [description, setDescription] = useState(() => editingProduct?.description ?? '')
+  const [salePrice, setSalePrice] = useState(() => editingPrice ? String(editingPrice.sale_price) : '')
+  const [minimumSalePrice, setMinimumSalePrice] = useState(() => editingPrice?.minimum_sale_price == null ? '' : String(editingPrice.minimum_sale_price))
   const [values, setValues] = useState<Record<number, DynamicValue>>(() => getInitialValues(editingProduct))
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -85,6 +91,8 @@ export default function ProductForm({
     setSku('')
     setName('')
     setDescription('')
+    setSalePrice('')
+    setMinimumSalePrice('')
     setValues({})
     setErrors({})
   }
@@ -106,6 +114,16 @@ export default function ProductForm({
     if (!brandId) nextErrors.brand_id = 'Choose a brand.'
     if (!name.trim()) nextErrors.name = 'Product name is required.'
     if (!sku.trim()) nextErrors.sku = 'SKU is required.'
+    const parsedSalePrice = Number(salePrice)
+    const parsedMinimumSalePrice = minimumSalePrice === '' ? null : Number(minimumSalePrice)
+    if (salePrice === '' || !Number.isFinite(parsedSalePrice) || parsedSalePrice < 0) {
+      nextErrors.sale_price = 'Enter a sale price of zero or more.'
+    }
+    if (minimumSalePrice !== '' && (!Number.isFinite(parsedMinimumSalePrice) || parsedMinimumSalePrice! < 0)) {
+      nextErrors.minimum_sale_price = 'Enter a minimum sale price of zero or more.'
+    } else if (parsedMinimumSalePrice !== null && parsedMinimumSalePrice > parsedSalePrice) {
+      nextErrors.minimum_sale_price = 'Minimum sale price cannot exceed sale price.'
+    }
 
     visibleAttributes.forEach(({ attribute, is_required }) => {
       const value = values[attribute.id]
@@ -144,13 +162,19 @@ export default function ProductForm({
     event.preventDefault()
     if (!validate()) return
     await onSubmit({
-      category_id: Number(categoryId),
-      brand_id: Number(brandId),
-      sku: sku.trim(),
-      name: name.trim(),
-      description: description.trim() || undefined,
-      is_active: true,
-      attributes: buildAttributeValues(),
+      product: {
+        category_id: Number(categoryId),
+        brand_id: Number(brandId),
+        sku: sku.trim(),
+        name: name.trim(),
+        description: description.trim() || undefined,
+        is_active: true,
+        attributes: buildAttributeValues(),
+      },
+      pricing: {
+        sale_price: Number(salePrice),
+        minimum_sale_price: minimumSalePrice === '' ? null : Number(minimumSalePrice),
+      },
     })
     reset()
   }
@@ -198,6 +222,27 @@ export default function ProductForm({
         <span>Description <em>Optional</em></span>
         <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Add a short description" />
       </label>
+
+      <section className="attribute-section" aria-labelledby="pricing-heading">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Selling price</p>
+            <h3 id="pricing-heading">Product pricing</h3>
+          </div>
+        </div>
+        <div className="form-grid form-grid--base">
+          <label className={errors.sale_price ? 'has-error' : ''}>
+            <span>Sale Price <b>*</b></span>
+            <input type="number" min="0" step="0.01" value={salePrice} onChange={(event) => setSalePrice(event.target.value)} placeholder="e.g. 999.00" />
+            {errors.sale_price && <small>{errors.sale_price}</small>}
+          </label>
+          <label className={errors.minimum_sale_price ? 'has-error' : ''}>
+            <span>Minimum Sale Price <em>Optional</em></span>
+            <input type="number" min="0" step="0.01" value={minimumSalePrice} onChange={(event) => setMinimumSalePrice(event.target.value)} placeholder="e.g. 899.00" />
+            {errors.minimum_sale_price && <small>{errors.minimum_sale_price}</small>}
+          </label>
+        </div>
+      </section>
 
       {categoryId && (
         <section className="attribute-section" aria-labelledby="attribute-heading">

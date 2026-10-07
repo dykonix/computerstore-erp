@@ -74,6 +74,20 @@ class InventoryRepository:
         session.flush()
         return inventory
 
+    def get_inventory_entity(
+        self, session: Session, tenant_id: int, inventory_id: int
+    ) -> Inventory | None:
+        return session.scalar(
+            select(Inventory).where(
+                Inventory.id == inventory_id,
+                Inventory.tenant_id == tenant_id,
+            )
+        )
+
+    def update_inventory(self, session: Session, inventory: Inventory) -> Inventory:
+        session.flush()
+        return inventory
+
     def reserve_inventory(
         self,
         session: Session,

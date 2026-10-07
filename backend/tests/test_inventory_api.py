@@ -1,4 +1,5 @@
 import unittest
+from decimal import Decimal
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
@@ -15,8 +16,8 @@ from app.models.product import Product
 from app.models.store import Store
 from app.models.supplier import Supplier
 from app.models.tenant import Tenant
-from app.schemas.inventory import InventoryTransferCreate, OpeningStockCreate
-from app.services.inventory_service import InventoryService, InventoryValidationError
+from app.schemas.inventory import InventoryCostPriceUpdate, InventoryTransferCreate, OpeningStockCreate
+from app.services.inventory_service import InventoryNotFoundError, InventoryService, InventoryValidationError
 
 
 class FailingMovementRepository:
@@ -133,6 +134,15 @@ class InventoryServiceTests(unittest.TestCase):
         payload.update(values)
         return OpeningStockCreate(**payload)
 
+    def update_cost_price(self, inventory_id, cost_price, tenant_id=None):
+        with Session(self.engine) as session:
+            return InventoryService().update_inventory_cost_price(
+                session,
+                tenant_id or self.tenant_id,
+                inventory_id,
+                InventoryCostPriceUpdate(cost_price=cost_price),
+            )
+
     def create(self, request=None, service=None, tenant_id=None):
         with Session(self.engine) as session:
             return (service or InventoryService()).create_opening_stock(session, tenant_id or self.tenant_id, request or self.opening()).id
@@ -182,7 +192,50 @@ class InventoryServiceTests(unittest.TestCase):
         with Session(self.engine) as session:
             inventory = session.get(Inventory, inventory_id)
             self.assertEqual(inventory.quantity, 5)
+            self.assertEqual(inventory.cost_price, Decimal("0.00"))
             self.assertIsNone(inventory.godown_id)
+
+    def test_opening_stock_saves_cost_price(self):
+        inventory_id = self.create(self.opening(cost_price="125.50"))
+        with Session(self.engine) as session:
+            self.assertEqual(
+                session.get(Inventory, inventory_id).cost_price, Decimal("125.50")
+            )
+
+    def test_negative_cost_price_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            self.opening(cost_price="-0.01")
+
+    def test_inventory_cost_price_can_be_updated(self):
+        inventory_id = self.create(self.opening(cost_price="50.00"))
+        self.update_cost_price(inventory_id, "68.25")
+        with Session(self.engine) as session:
+            self.assertEqual(
+                session.get(Inventory, inventory_id).cost_price, Decimal("68.25")
+            )
+
+    def test_transfer_carries_cost_price_to_new_balance(self):
+        self.add_balance(store_id=self.store_id, quantity=20, reserved_quantity=0)
+        with Session(self.engine) as session:
+            source = session.scalar(
+                select(Inventory).where(Inventory.store_id == self.store_id)
+            )
+            source.cost_price = Decimal("89.50")
+            session.commit()
+
+        self.transfer(self.transfer_request(quantity=5))
+        with Session(self.engine) as session:
+            destination = session.scalar(
+                select(Inventory).where(Inventory.store_id == self.second_store_id)
+            )
+            self.assertEqual(destination.cost_price, Decimal("89.50"))
+
+    def test_inventory_cost_price_update_is_tenant_scoped(self):
+        inventory_id = self.create()
+        with self.assertRaises(InventoryNotFoundError):
+            self.update_cost_price(
+                inventory_id, "68.25", self.other_tenant_id
+            )
 
     def test_valid_godown_opening(self):
         inventory_id = self.create(self.opening(store_id=None, godown_id=self.godown_id))

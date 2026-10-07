@@ -541,6 +541,23 @@ class ProductServiceTests(unittest.TestCase):
             price = session.get(ProductPrice, price_id)
             self.assertEqual(price.sale_price, Decimal("200.00"))
 
+    def test_product_price_can_be_updated(self):
+        product_id = self.create()
+        price_id = self.create_price(product_id)
+        with Session(self.engine) as session:
+            price = ProductService().update_product_price(
+                session,
+                self.tenant_id,
+                product_id,
+                price_id,
+                ProductPriceUpdate(
+                    sale_price=Decimal("225.00"),
+                    minimum_sale_price=Decimal("175.00"),
+                ),
+            )
+            self.assertEqual(price.sale_price, Decimal("225.00"))
+            self.assertEqual(price.minimum_sale_price, Decimal("175.00"))
+
     def test_product_price_update_cannot_target_another_product_price(self):
         first_product_id = self.create()
         second_product_id = self.create(self.request(sku="HP-SECOND"))

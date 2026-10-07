@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -7,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     func,
     text,
 )
@@ -18,6 +20,9 @@ from app.database.base import Base
 class Inventory(Base):
     __tablename__ = "inventory"
     __table_args__ = (
+        CheckConstraint(
+            "cost_price >= 0", name="ck_inventory_cost_price_nonnegative"
+        ),
         CheckConstraint(
             "(store_id IS NOT NULL) <> (godown_id IS NOT NULL)",
             name="ck_inventory_exactly_one_location",
@@ -70,6 +75,9 @@ class Inventory(Base):
     )
     reserved_quantity: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
+    )
+    cost_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=0, server_default=text("0")
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

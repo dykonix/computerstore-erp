@@ -110,7 +110,7 @@ class ProductResponse(BaseModel):
 class ProductPriceCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    cost_price: Decimal = Field(ge=0)
+    cost_price: Decimal = Field(default=Decimal("0.00"), ge=0)
     sale_price: Decimal = Field(ge=0)
     minimum_sale_price: Decimal | None = Field(default=None, ge=0)
     valid_from: date

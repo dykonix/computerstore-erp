@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_tenant_id
 from app.database.session import get_db
 from app.repositories.inventory_repository import InventoryRepository
-from app.schemas.inventory import InventoryFormDataResponse, InventoryListItem, InventoryListResponse, InventoryLocationSummary, InventoryResponse, InventoryTransferCreate, OpeningStockCreate
+from app.schemas.inventory import InventoryCostPriceUpdate, InventoryFormDataResponse, InventoryListItem, InventoryListResponse, InventoryLocationSummary, InventoryResponse, InventoryTransferCreate, OpeningStockCreate
 from app.services.inventory_service import InventoryNotFoundError, InventoryService, InventoryValidationError
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -16,7 +16,7 @@ def _service() -> InventoryService:
 
 def _row_response(row) -> InventoryResponse:
     inventory, product_name, sku, brand, category, location_type, location_name = row
-    return InventoryResponse(id=inventory.id, product_id=inventory.product_id, product_name=product_name, sku=sku, brand=brand, category=category, location=InventoryLocationSummary(type=location_type, name=location_name), quantity=inventory.quantity, reserved_quantity=inventory.reserved_quantity, available_quantity=inventory.quantity - inventory.reserved_quantity)
+    return InventoryResponse(id=inventory.id, product_id=inventory.product_id, product_name=product_name, sku=sku, brand=brand, category=category, location=InventoryLocationSummary(type=location_type, name=location_name), quantity=inventory.quantity, reserved_quantity=inventory.reserved_quantity, available_quantity=inventory.quantity - inventory.reserved_quantity, cost_price=inventory.cost_price)
 
 
 @router.get("/form-data", response_model=InventoryFormDataResponse)
@@ -52,6 +52,15 @@ def list_inventory(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, 
 @router.get("/{inventory_id}", response_model=InventoryResponse)
 def get_inventory(inventory_id: int, session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant_id), service: InventoryService = Depends(_service)) -> InventoryResponse:
     try:
+        return _row_response(service.get_inventory(session, tenant_id, inventory_id))
+    except InventoryNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.put("/{inventory_id}", response_model=InventoryResponse)
+def update_inventory_cost_price(inventory_id: int, request: InventoryCostPriceUpdate, session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant_id), service: InventoryService = Depends(_service)) -> InventoryResponse:
+    try:
+        service.update_inventory_cost_price(session, tenant_id, inventory_id, request)
         return _row_response(service.get_inventory(session, tenant_id, inventory_id))
     except InventoryNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error

@@ -1,3 +1,5 @@
+import { apiRequest } from './apiClient'
+
 export type DataType = 'SELECT' | 'MULTI_SELECT' | 'NUMBER' | 'DECIMAL' | 'TEXT'
 
 export interface Category {
@@ -73,6 +75,22 @@ export interface ProductResponse extends ProductListItem {
   attributes: ProductAttributeValueResponse[]
 }
 
+export interface ProductPriceResponse {
+  id: number
+  product_id: number
+  sale_price: number
+  minimum_sale_price: number | null
+  valid_from: string
+  valid_to: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProductPriceWriteRequest {
+  sale_price: number
+  minimum_sale_price: number | null
+}
+
 export interface ProductAttributeValueCreate {
   attribute_id: number
   attribute_option_id?: number
@@ -91,54 +109,72 @@ export interface ProductCreateRequest {
   attributes: ProductAttributeValueCreate[]
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  })
-
-  if (!response.ok) {
-    let detail = `Request failed with status ${response.status}`
-    try {
-      const payload = (await response.json()) as { detail?: string | Array<{ msg?: string }> }
-      if (typeof payload.detail === 'string') detail = payload.detail
-      if (Array.isArray(payload.detail)) {
-        detail = payload.detail.map((item) => item.msg ?? 'Invalid value').join(', ')
-      }
-    } catch {
-      // Keep the useful status fallback when the server returns a non-JSON error.
-    }
-    throw new Error(detail)
-  }
-
-  return response.json() as Promise<T>
-}
-
 export function fetchProductFormData(): Promise<ProductFormData> {
-  return request<ProductFormData>('/api/products/form-data')
+  return apiRequest<ProductFormData>('/api/products/form-data')
 }
 
 export function fetchProducts(): Promise<ProductListResponse> {
-  return request<ProductListResponse>('/api/products?page=1&page_size=100')
+  return apiRequest<ProductListResponse>('/api/products?page=1&page_size=100')
 }
 
-export function createProduct(payload: ProductCreateRequest): Promise<ProductResponse> {
-  return request<ProductResponse>('/api/products', {
+export function createProduct(
+  payload: ProductCreateRequest,
+): Promise<ProductResponse> {
+  return apiRequest<ProductResponse>('/api/products', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
 export function fetchProduct(productId: number): Promise<ProductResponse> {
-  return request<ProductResponse>(`/api/products/${productId}`)
+  return apiRequest<ProductResponse>(`/api/products/${productId}`)
 }
 
 export function updateProduct(
   productId: number,
   payload: ProductCreateRequest,
 ): Promise<ProductResponse> {
-  return request<ProductResponse>(`/api/products/${productId}`, {
+  return apiRequest<ProductResponse>(`/api/products/${productId}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   })
+}
+
+export async function fetchCurrentProductPrice(
+  productId: number,
+): Promise<ProductPriceResponse | null> {
+  try {
+    return await apiRequest<ProductPriceResponse>(
+      `/api/products/${productId}/prices/current`,
+    )
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Current product price not found') {
+      return null
+    }
+    throw error
+  }
+}
+
+export function createProductPrice(
+  productId: number,
+  payload: ProductPriceWriteRequest,
+): Promise<ProductPriceResponse> {
+  return apiRequest<ProductPriceResponse>(`/api/products/${productId}/prices`, {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, valid_from: new Date().toISOString().slice(0, 10) }),
+  })
+}
+
+export function updateProductPrice(
+  productId: number,
+  priceId: number,
+  payload: ProductPriceWriteRequest,
+): Promise<ProductPriceResponse> {
+  return apiRequest<ProductPriceResponse>(
+    `/api/products/${productId}/prices/${priceId}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    },
+  )
 }

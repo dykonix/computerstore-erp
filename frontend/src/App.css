@@ -75,7 +75,9 @@ label small { color: var(--red); font-size: .7rem; font-weight: 600; }
 .primary-button:hover { background: var(--red-dark); }
 .primary-button:disabled { cursor: wait; opacity: .6; }
 .product-list-panel { margin-top: 24px; overflow: hidden; }
-.inventory-form-grid { grid-template-columns: 1.3fr 1.2fr 1fr 1.2fr .7fr; }
+.inventory-form-grid { grid-template-columns: 1.3fr 1.2fr 1fr 1.2fr .7fr .8fr; }
+.inventory-cost-edit { display: flex; align-items: center; gap: 6px; }
+.inventory-cost-edit input { width: 100px; min-width: 90px; }
 .inventory-transfer-form { margin-top: 24px; }
 .inventory-transfer-grid { grid-template-columns: 1fr 1.35fr 1.35fr .8fr; }
 .inventory-transfer-form label small.transfer-availability { color: var(--green); font-weight: 700; }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createOpeningStock, fetchInventory, fetchInventoryFormData, transferInventory } from '../api/inventoryApi'
+import { createOpeningStock, fetchInventory, fetchInventoryFormData, transferInventory, updateInventoryCostPrice } from '../api/inventoryApi'
 import type { InventoryFormData, InventoryItem, InventoryTransferRequest, OpeningStockRequest } from '../api/inventoryApi'
 import { fetchSuppliers } from '../api/supplierApi'
 import type { Supplier } from '../api/supplierApi'
@@ -44,6 +44,10 @@ export default function Inventory() {
   const [supplierId, setSupplierId] = useState('')
   const [locationId, setLocationId] = useState('')
   const [quantity, setQuantity] = useState('')
+  const [costPrice, setCostPrice] = useState('')
+  const [editingInventoryId, setEditingInventoryId] = useState<number | null>(null)
+  const [editingCostPrice, setEditingCostPrice] = useState('')
+  const [costPriceSubmitting, setCostPriceSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [listLoading, setListLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -84,16 +88,39 @@ export default function Inventory() {
     void load()
   }, [])
 
-  function reset() { setProductId(''); setSupplierId(''); setLocationId(''); setQuantity('') }
+  function reset() { setProductId(''); setSupplierId(''); setLocationId(''); setQuantity(''); setCostPrice('') }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(''); setSuccess('')
     if (!productId || !supplierId || !locationId || !quantity || Number(quantity) <= 0) { setError('Choose a product, supplier, location, and quantity greater than zero.'); return }
-    const payload: OpeningStockRequest = { product_id: Number(productId), supplier_id: Number(supplierId), quantity: Number(quantity), ...(locationType === 'store' ? { store_id: Number(locationId) } : { godown_id: Number(locationId) }) }
+    if (costPrice === '' || !Number.isFinite(Number(costPrice)) || Number(costPrice) < 0) { setError('Enter a cost price of zero or more.'); return }
+    const payload: OpeningStockRequest = { product_id: Number(productId), supplier_id: Number(supplierId), quantity: Number(quantity), cost_price: Number(costPrice), ...(locationType === 'store' ? { store_id: Number(locationId) } : { godown_id: Number(locationId) }) }
     setSubmitting(true)
     try { await createOpeningStock(payload); setSuccess('Opening stock added successfully.'); reset(); await loadInventory() }
     catch (submitError) { setError(submitError instanceof Error ? submitError.message : 'Unable to add opening stock.') }
     finally { setSubmitting(false) }
+  }
+
+  async function saveCostPrice(item: InventoryItem) {
+    const nextCostPrice = Number(editingCostPrice)
+    if (editingCostPrice === '' || !Number.isFinite(nextCostPrice) || nextCostPrice < 0) {
+      setError('Enter a cost price of zero or more.')
+      return
+    }
+    setCostPriceSubmitting(true)
+    setError('')
+    setSuccess('')
+    try {
+      await updateInventoryCostPrice(item.id, nextCostPrice)
+      setEditingInventoryId(null)
+      setEditingCostPrice('')
+      setSuccess('Inventory cost price updated successfully.')
+      await loadInventory()
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Unable to update inventory cost price.')
+    } finally {
+      setCostPriceSubmitting(false)
+    }
   }
 
   const locations = locationType === 'store' ? formData?.stores ?? [] : formData?.godowns ?? []
@@ -185,6 +212,7 @@ export default function Inventory() {
           <label><span>Location type <b>*</b></span><select value={locationType} onChange={(event) => { setLocationType(event.target.value as 'store' | 'godown'); setLocationId('') }}><option value="store">Store</option><option value="godown">Godown</option></select></label>
           <label><span>{locationType === 'store' ? 'Store' : 'Godown'} <b>*</b></span><select value={locationId} onChange={(event) => setLocationId(event.target.value)}><option value="">Select {locationType}</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
           <label><span>Quantity <b>*</b></span><input type="number" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="e.g. 5" /></label>
+          <label><span>Cost Price <b>*</b></span><input type="number" min="0" step="0.01" value={costPrice} onChange={(event) => setCostPrice(event.target.value)} placeholder="e.g. 450.00" /></label>
         </div>
         <div className="form-actions"><button type="submit" className="primary-button" disabled={submitting}>{submitting ? 'Saving...' : 'Add Opening Stock'}</button></div>
       </form>
@@ -204,7 +232,7 @@ export default function Inventory() {
         </div>
       </form>
       <section className="product-list-panel inventory-list"><div className="section-heading section-heading--list"><div><p className="eyebrow">Current position</p><h2>Inventory list</h2></div><span>{items.length} records</span></div>
-        {listLoading ? <div className="table-loading">Loading inventory...</div> : items.length === 0 ? <div className="empty-state">No inventory balances yet.</div> : <div className="table-wrap"><table><thead><tr><th>Product</th><th>SKU</th><th>Location</th><th>Quantity</th><th>Reserved</th><th>Available</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td className="product-name-cell">{item.product_name}</td><td className="mono">{item.sku}</td><td>{item.location.name} <small>({item.location.type})</small></td><td>{item.quantity}</td><td>{item.reserved_quantity}</td><td className="available-value">{item.available_quantity}</td></tr>)}</tbody></table></div>}
+        {listLoading ? <div className="table-loading">Loading inventory...</div> : items.length === 0 ? <div className="empty-state">No inventory balances yet.</div> : <div className="table-wrap"><table><thead><tr><th>Product</th><th>SKU</th><th>Location</th><th>Quantity</th><th>Reserved</th><th>Available</th><th>Cost Price</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td className="product-name-cell">{item.product_name}</td><td className="mono">{item.sku}</td><td>{item.location.name} <small>({item.location.type})</small></td><td>{item.quantity}</td><td>{item.reserved_quantity}</td><td className="available-value">{item.available_quantity}</td><td>{editingInventoryId === item.id ? <div className="inventory-cost-edit"><input aria-label={`Cost price for ${item.product_name}`} type="number" min="0" step="0.01" value={editingCostPrice} onChange={(event) => setEditingCostPrice(event.target.value)} /><button type="button" className="row-action" onClick={() => void saveCostPrice(item)} disabled={costPriceSubmitting}>Save</button><button type="button" className="row-action" onClick={() => { setEditingInventoryId(null); setEditingCostPrice('') }} disabled={costPriceSubmitting}>Cancel</button></div> : <>{item.cost_price.toFixed(2)} <button type="button" className="row-action" onClick={() => { setEditingInventoryId(item.id); setEditingCostPrice(String(item.cost_price)) }}>Edit</button></>}</td></tr>)}</tbody></table></div>}
       </section>
     </>}
   </div>
