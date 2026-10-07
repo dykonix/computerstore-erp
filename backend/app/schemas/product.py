@@ -1,6 +1,7 @@
+from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ProductAttributeValueCreate(BaseModel):
@@ -104,3 +105,48 @@ class ProductResponse(BaseModel):
     brand: BrandSummary
     is_active: bool
     attributes: list[ProductAttributeValueResponse]
+
+
+class ProductPriceCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cost_price: Decimal = Field(ge=0)
+    sale_price: Decimal = Field(ge=0)
+    minimum_sale_price: Decimal | None = Field(default=None, ge=0)
+    valid_from: date
+    valid_to: date | None = None
+
+    @model_validator(mode="after")
+    def validate_price_period(self) -> "ProductPriceCreate":
+        if (
+            self.minimum_sale_price is not None
+            and self.minimum_sale_price > self.sale_price
+        ):
+            raise ValueError("minimum_sale_price cannot exceed sale_price")
+        if self.valid_to is not None and self.valid_to < self.valid_from:
+            raise ValueError("valid_to cannot be earlier than valid_from")
+        return self
+
+
+class ProductPriceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cost_price: Decimal | None = Field(default=None, ge=0)
+    sale_price: Decimal | None = Field(default=None, ge=0)
+    minimum_sale_price: Decimal | None = Field(default=None, ge=0)
+    valid_from: date | None = None
+    valid_to: date | None = None
+
+
+class ProductPriceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: int
+    cost_price: Decimal
+    sale_price: Decimal
+    minimum_sale_price: Decimal | None
+    valid_from: date
+    valid_to: date | None
+    created_at: datetime
+    updated_at: datetime

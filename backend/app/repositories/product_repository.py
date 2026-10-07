@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -9,9 +11,49 @@ from app.models.category import Category
 from app.models.category_attribute import CategoryAttribute
 from app.models.product import Product
 from app.models.product_attribute_value import ProductAttributeValue
+from app.models.product_price import ProductPrice
 
 
 class ProductRepository:
+    def get_current_product_price(
+        self, session: Session, product_id: int, effective_date: date
+    ) -> ProductPrice | None:
+        statement = (
+            select(ProductPrice)
+            .where(
+                ProductPrice.product_id == product_id,
+                ProductPrice.valid_from <= effective_date,
+                (ProductPrice.valid_to.is_(None))
+                | (ProductPrice.valid_to >= effective_date),
+            )
+            .order_by(ProductPrice.valid_from.desc(), ProductPrice.id.desc())
+            .limit(1)
+        )
+        return session.scalar(statement)
+
+    def add_product_price(
+        self, session: Session, price: ProductPrice
+    ) -> ProductPrice:
+        session.add(price)
+        session.flush()
+        return price
+
+    def get_product_price(
+        self, session: Session, product_id: int, price_id: int
+    ) -> ProductPrice | None:
+        return session.scalar(
+            select(ProductPrice).where(
+                ProductPrice.product_id == product_id,
+                ProductPrice.id == price_id,
+            )
+        )
+
+    def update_product_price(
+        self, session: Session, price: ProductPrice
+    ) -> ProductPrice:
+        session.flush()
+        return price
+
     def get_active_categories(self, session: Session) -> list[Category]:
         return list(
             session.scalars(

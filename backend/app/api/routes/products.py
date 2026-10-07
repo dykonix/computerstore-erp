@@ -14,10 +14,14 @@ from app.schemas.product import (
     ProductFormDataResponse,
     ProductListItem,
     ProductListResponse,
+    ProductPriceCreate,
+    ProductPriceResponse,
+    ProductPriceUpdate,
     ProductResponse,
 )
 from app.services.product_service import (
     ProductNotFoundError,
+    ProductPriceNotFoundError,
     ProductService,
     ProductValidationError,
 )
@@ -142,6 +146,65 @@ def get_product(
         return _product_response(row, values)
     except ProductNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.get("/{product_id}/prices/current", response_model=ProductPriceResponse)
+def get_current_product_price(
+    product_id: int,
+    session: Session = Depends(get_db),
+    tenant_id: int = Depends(get_current_tenant_id),
+    service: ProductService = Depends(_service),
+) -> ProductPriceResponse:
+    try:
+        price = service.get_current_product_price(session, tenant_id, product_id)
+        return ProductPriceResponse.model_validate(price)
+    except (ProductNotFoundError, ProductPriceNotFoundError) as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.post(
+    "/{product_id}/prices",
+    response_model=ProductPriceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_product_price(
+    product_id: int,
+    request: ProductPriceCreate,
+    session: Session = Depends(get_db),
+    tenant_id: int = Depends(get_current_tenant_id),
+    service: ProductService = Depends(_service),
+) -> ProductPriceResponse:
+    try:
+        price = service.create_product_price(
+            session, tenant_id, product_id, request
+        )
+        return ProductPriceResponse.model_validate(price)
+    except ProductNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ProductValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.put(
+    "/{product_id}/prices/{price_id}", response_model=ProductPriceResponse
+)
+def update_product_price(
+    product_id: int,
+    price_id: int,
+    request: ProductPriceUpdate,
+    session: Session = Depends(get_db),
+    tenant_id: int = Depends(get_current_tenant_id),
+    service: ProductService = Depends(_service),
+) -> ProductPriceResponse:
+    try:
+        price = service.update_product_price(
+            session, tenant_id, product_id, price_id, request
+        )
+        return ProductPriceResponse.model_validate(price)
+    except (ProductNotFoundError, ProductPriceNotFoundError) as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ProductValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 def _product_response(row, values) -> ProductResponse:

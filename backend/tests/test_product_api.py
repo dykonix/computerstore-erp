@@ -1,4 +1,6 @@
 import unittest
+from datetime import date, timedelta
+from decimal import Decimal
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
@@ -15,9 +17,20 @@ from app.models.tenant import Tenant
 from app.models.employee import Employee
 from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
+from app.models.product_price import ProductPrice
 from app.api.routes.products import _product_response
-from app.schemas.product import ProductAttributeValueCreate, ProductCreate
-from app.services.product_service import ProductService, ProductValidationError
+from app.schemas.product import (
+    ProductAttributeValueCreate,
+    ProductCreate,
+    ProductPriceCreate,
+    ProductPriceUpdate,
+)
+from app.services.product_service import (
+    ProductNotFoundError,
+    ProductPriceNotFoundError,
+    ProductService,
+    ProductValidationError,
+)
 
 
 class FailingValueRepository:
@@ -161,6 +174,23 @@ class ProductServiceTests(unittest.TestCase):
                 session, self.tenant_id, product_id, request or self.request()
             )
             return product.id
+
+    def price_request(self, **overrides):
+        values = {
+            "cost_price": Decimal("100.00"),
+            "sale_price": Decimal("200.00"),
+            "minimum_sale_price": Decimal("150.00"),
+            "valid_from": date.today(),
+            "valid_to": None,
+        }
+        values.update(overrides)
+        return ProductPriceCreate(**values)
+
+    def create_price(self, product_id, request=None):
+        with Session(self.engine) as session:
+            return ProductService().create_product_price(
+                session, self.tenant_id, product_id, request or self.price_request()
+            ).id
 
     def test_valid_product_creation(self):
         product_id = self.create()
@@ -455,6 +485,89 @@ class ProductServiceTests(unittest.TestCase):
                 session.scalar(select(func.count()).select_from(ProductAttributeValue).where(ProductAttributeValue.product_id == product_id)),
                 1,
             )
+
+    def test_current_product_price_uses_latest_active_price(self):
+        product_id = self.create()
+        self.create_price(
+            product_id,
+            self.price_request(
+                sale_price=Decimal("200.00"),
+                minimum_sale_price=Decimal("150.00"),
+                valid_from=date.today() - timedelta(days=10),
+                valid_to=date.today() + timedelta(days=10),
+            ),
+        )
+        self.create_price(
+            product_id,
+            self.price_request(
+                sale_price=Decimal("250.00"),
+                minimum_sale_price=Decimal("200.00"),
+                valid_from=date.today() - timedelta(days=1),
+            ),
+        )
+
+        with Session(self.engine) as session:
+            price = ProductService().get_current_product_price(
+                session, self.tenant_id, product_id
+            )
+            self.assertEqual(price.sale_price, Decimal("250.00"))
+
+    def test_product_price_operations_require_tenant_owned_product(self):
+        product_id = self.create()
+        with Session(self.engine) as session:
+            with self.assertRaises(ProductNotFoundError):
+                ProductService().create_product_price(
+                    session, self.tenant_id + 1, product_id, self.price_request()
+                )
+            with self.assertRaises(ProductNotFoundError):
+                ProductService().get_current_product_price(
+                    session, self.tenant_id + 1, product_id
+                )
+
+    def test_product_price_update_validates_merged_values(self):
+        product_id = self.create()
+        price_id = self.create_price(product_id)
+        with Session(self.engine) as session:
+            with self.assertRaises(ProductValidationError):
+                ProductService().update_product_price(
+                    session,
+                    self.tenant_id,
+                    product_id,
+                    price_id,
+                    ProductPriceUpdate(sale_price=Decimal("140.00")),
+                )
+
+        with Session(self.engine) as session:
+            price = session.get(ProductPrice, price_id)
+            self.assertEqual(price.sale_price, Decimal("200.00"))
+
+    def test_product_price_update_cannot_target_another_product_price(self):
+        first_product_id = self.create()
+        second_product_id = self.create(self.request(sku="HP-SECOND"))
+        price_id = self.create_price(first_product_id)
+
+        with Session(self.engine) as session:
+            with self.assertRaises(ProductPriceNotFoundError):
+                ProductService().update_product_price(
+                    session,
+                    self.tenant_id,
+                    second_product_id,
+                    price_id,
+                    ProductPriceUpdate(sale_price=Decimal("225.00")),
+                )
+
+    def test_product_price_request_rejects_invalid_values(self):
+        invalid_requests = [
+            {"cost_price": Decimal("-1.00")},
+            {"sale_price": Decimal("-1.00")},
+            {"minimum_sale_price": Decimal("-1.00")},
+            {"minimum_sale_price": Decimal("201.00")},
+            {"valid_to": date.today() - timedelta(days=1)},
+        ]
+        for override in invalid_requests:
+            with self.subTest(override=override):
+                with self.assertRaises(ValueError):
+                    self.price_request(**override)
 
 
 if __name__ == "__main__":

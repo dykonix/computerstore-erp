@@ -1,11 +1,19 @@
 from collections.abc import Iterable
+from datetime import date
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
 from app.models.product import Product
 from app.models.product_attribute_value import ProductAttributeValue
+from app.models.product_price import ProductPrice
 from app.repositories.product_repository import ProductRepository
-from app.schemas.product import ProductAttributeValueCreate, ProductCreate
+from app.schemas.product import (
+    ProductAttributeValueCreate,
+    ProductCreate,
+    ProductPriceCreate,
+    ProductPriceUpdate,
+)
 
 
 class ProductNotFoundError(Exception):
@@ -16,9 +24,117 @@ class ProductValidationError(Exception):
     pass
 
 
+class ProductPriceNotFoundError(Exception):
+    pass
+
+
 class ProductService:
     def __init__(self, repository: ProductRepository | None = None) -> None:
         self.repository = repository or ProductRepository()
+
+    def get_current_product_price(
+        self, session: Session, tenant_id: int, product_id: int
+    ) -> ProductPrice:
+        product = self.repository.get_product_entity(session, tenant_id, product_id)
+        if product is None:
+            raise ProductNotFoundError("Product not found")
+        price = self.repository.get_current_product_price(
+            session, product.id, date.today()
+        )
+        if price is None:
+            raise ProductPriceNotFoundError("Current product price not found")
+        return price
+
+    def create_product_price(
+        self,
+        session: Session,
+        tenant_id: int,
+        product_id: int,
+        request: ProductPriceCreate,
+    ) -> ProductPrice:
+        with session.begin():
+            product = self.repository.get_product_entity(
+                session, tenant_id, product_id
+            )
+            if product is None:
+                raise ProductNotFoundError("Product not found")
+            self._validate_product_price(
+                request.cost_price,
+                request.sale_price,
+                request.minimum_sale_price,
+                request.valid_from,
+                request.valid_to,
+            )
+            return self.repository.add_product_price(
+                session,
+                ProductPrice(
+                    product_id=product.id,
+                    cost_price=request.cost_price,
+                    sale_price=request.sale_price,
+                    minimum_sale_price=request.minimum_sale_price,
+                    valid_from=request.valid_from,
+                    valid_to=request.valid_to,
+                ),
+            )
+
+    def update_product_price(
+        self,
+        session: Session,
+        tenant_id: int,
+        product_id: int,
+        price_id: int,
+        request: ProductPriceUpdate,
+    ) -> ProductPrice:
+        updates = request.model_dump(exclude_unset=True)
+        if not updates:
+            raise ProductValidationError("At least one field must be provided")
+        if any(value is None for field, value in updates.items() if field != "valid_to" and field != "minimum_sale_price"):
+            raise ProductValidationError("Price fields cannot be empty")
+
+        with session.begin():
+            product = self.repository.get_product_entity(
+                session, tenant_id, product_id
+            )
+            if product is None:
+                raise ProductNotFoundError("Product not found")
+            price = self.repository.get_product_price(session, product.id, price_id)
+            if price is None:
+                raise ProductPriceNotFoundError("Product price not found")
+
+            effective_values = {
+                "cost_price": updates.get("cost_price", price.cost_price),
+                "sale_price": updates.get("sale_price", price.sale_price),
+                "minimum_sale_price": updates.get(
+                    "minimum_sale_price", price.minimum_sale_price
+                ),
+                "valid_from": updates.get("valid_from", price.valid_from),
+                "valid_to": updates.get("valid_to", price.valid_to),
+            }
+            self._validate_product_price(**effective_values)
+            for field, value in updates.items():
+                setattr(price, field, value)
+            return self.repository.update_product_price(session, price)
+
+    @staticmethod
+    def _validate_product_price(
+        cost_price: Decimal,
+        sale_price: Decimal,
+        minimum_sale_price: Decimal | None,
+        valid_from: date,
+        valid_to: date | None,
+    ) -> None:
+        if cost_price < 0 or sale_price < 0:
+            raise ProductValidationError("Prices cannot be negative")
+        if minimum_sale_price is not None and minimum_sale_price < 0:
+            raise ProductValidationError("minimum_sale_price cannot be negative")
+        if minimum_sale_price is not None and minimum_sale_price > sale_price:
+            raise ProductValidationError(
+                "minimum_sale_price cannot exceed sale_price"
+            )
+        if valid_to is not None and valid_to < valid_from:
+            raise ProductValidationError(
+                "valid_to cannot be earlier than valid_from"
+            )
 
     def create_product(
         self, session: Session, tenant_id: int, request: ProductCreate
