@@ -23,6 +23,14 @@ class PromotionBenefit(Base):
             name="ck_promotion_benefits_type",
         ),
         CheckConstraint(
+            "cashback_amount IS NULL OR cashback_amount >= 0",
+            name="ck_promotion_benefits_cashback_nonnegative",
+        ),
+        CheckConstraint(
+            "promotion_price IS NULL OR promotion_price >= 0",
+            name="ck_promotion_benefits_price_nonnegative",
+        ),
+        CheckConstraint(
             """
             (
                 benefit_type = 'PRODUCT'
@@ -53,14 +61,6 @@ class PromotionBenefit(Base):
             """,
             name="ck_promotion_benefits_valid_type_fields",
         ),
-        CheckConstraint(
-            "promotion_price IS NULL OR promotion_price >= 0",
-            name="ck_promotion_benefits_price_nonnegative",
-        ),
-        CheckConstraint(
-            "cashback_amount IS NULL OR cashback_amount >= 0",
-            name="ck_promotion_benefits_cashback_nonnegative",
-        ),
     )
 
     id: Mapped[int] = mapped_column(
@@ -89,12 +89,12 @@ class PromotionBenefit(Base):
     )
 
     promotion_price: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2),
+        Numeric(precision=12, scale=2),
         nullable=True,
     )
 
     cashback_amount: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2),
+        Numeric(precision=12, scale=2),
         nullable=True,
     )
 
@@ -113,5 +113,4 @@ class PromotionBenefit(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
-        onupdate=func.now(),
     )

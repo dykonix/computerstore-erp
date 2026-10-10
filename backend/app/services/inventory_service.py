@@ -175,5 +175,27 @@ class InventoryService:
             inventory.cost_price = request.cost_price
             return self.repository.update_inventory(session, inventory)
 
-    def list_inventory(self, session: Session, tenant_id: int, page: int, page_size: int):
-        return self.repository.list_inventory(session, tenant_id, (page - 1) * page_size, page_size), self.repository.count_inventory(session, tenant_id)
+    def list_inventory(
+        self,
+        session: Session,
+        tenant_id: int,
+        page: int,
+        page_size: int,
+        product_id: int | None = None,
+        store_id: int | None = None,
+    ):
+        rows = self.repository.list_inventory(
+            session,
+            tenant_id,
+            (page - 1) * page_size,
+            page_size,
+            product_id,
+            store_id,
+        )
+        total = self.repository.count_inventory(
+            session,
+            tenant_id,
+            product_id,
+            store_id,
+        )
+        return rows, total

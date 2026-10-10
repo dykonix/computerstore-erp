@@ -1,10 +1,11 @@
 import unittest
+
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
-from sqlalchemy import create_engine
 
 from app.database.base import Base
 from app.models.brand import Brand
@@ -16,10 +17,12 @@ from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
 from app.models.permission import Permission
 from app.models.product import Product
+from app.models.product_price import ProductPrice
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.sale_payment import SalePayment
 from app.models.store import Store
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -27,7 +30,7 @@ from app.models.user_role import UserRole
 from app.services.sale_service import SaleService
 
 
-class SaleServiceTests(unittest.TestCase):
+class SaleConfirmationServiceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.engine = create_engine(
@@ -54,6 +57,7 @@ class SaleServiceTests(unittest.TestCase):
 
             category = Category(
                 name="Laptops",
+                gst_rate=Decimal("18.00"),
             )
 
             brand = Brand(
@@ -72,11 +76,13 @@ class SaleServiceTests(unittest.TestCase):
                 tenant_id=tenant.id,
                 email="sales@example.com",
                 name="Sales Employee",
+                is_active=True,
             )
 
             store = Store(
                 tenant_id=tenant.id,
                 name="Main Store",
+                is_active=True,
             )
 
             product = Product(
@@ -85,25 +91,21 @@ class SaleServiceTests(unittest.TestCase):
                 brand_id=brand.id,
                 sku="HP-001",
                 name="HP Laptop",
+                is_active=True,
             )
 
             customer = Customer(
                 tenant_id=tenant.id,
                 name="Test Customer",
                 mobile="9999999999",
-            )
-
-            inactive_customer = Customer(
-                tenant_id=tenant.id,
-                name="Inactive Customer",
-                mobile="9999999998",
-                is_active=False,
+                is_active=True,
             )
 
             role = Role(
                 tenant_id=tenant.id,
                 name="Sales",
                 description="Sales role",
+                is_active=True,
             )
 
             permission = Permission(
@@ -116,7 +118,6 @@ class SaleServiceTests(unittest.TestCase):
                 store,
                 product,
                 customer,
-                inactive_customer,
                 role,
                 permission,
             ])
@@ -150,14 +151,33 @@ class SaleServiceTests(unittest.TestCase):
                     employee_id=employee.id,
                     store_id=store.id,
                 ),
-                Inventory(
-                    tenant_id=tenant.id,
-                    product_id=product.id,
-                    store_id=store.id,
-                    quantity=5,
-                    reserved_quantity=1,
-                ),
             ])
+
+            session.flush()
+
+            product_price = ProductPrice(
+                product_id=product.id,
+                cost_price=Decimal("800.00"),
+                sale_price=Decimal("1000.00"),
+                minimum_sale_price=Decimal("900.00"),
+                valid_from=date.today(),
+                valid_to=None,
+            )
+
+            inventory = Inventory(
+                tenant_id=tenant.id,
+                product_id=product.id,
+                store_id=store.id,
+                quantity=5,
+                reserved_quantity=1,
+            )
+
+            session.add_all([
+                product_price,
+                inventory,
+            ])
+
+            session.flush()
 
             sale = Sale(
                 tenant_id=tenant.id,
@@ -190,120 +210,108 @@ class SaleServiceTests(unittest.TestCase):
             )
 
             session.add(sale_item)
+
             session.commit()
 
             self.tenant_id = tenant.id
             self.employee_id = employee.id
             self.store_id = store.id
             self.product_id = product.id
-            self.customer_id = customer.id
-            self.inactive_customer_id = inactive_customer.id
             self.user_id = user.id
             self.sale_id = sale.id
 
-    def test_create_draft_sale(self):
-        service = SaleService()
+    def reserve_sale(self, session):
+        user = session.get(User, self.user_id)
 
-        with Session(self.engine) as session:
-            user = session.get(User, self.user_id)
+        return SaleService().reserve_sale(
+            session,
+            user,
+            self.sale_id,
+        )
 
-            sale = service.create_sale(
-                session=session,
-                current_user=user,
-                store_id=self.store_id,
-                customer_id=self.customer_id,
-            )
+    def add_full_payment(self, session):
+        user = session.get(User, self.user_id)
 
-            session.commit()
+        return SaleService().add_sale_payment(
+            session=session,
+            current_user=user,
+            sale_id=self.sale_id,
+            payment_mode="UPI",
+            amount=Decimal("2000.00"),
+            transaction_reference="UPI-001",
+        )
 
-            self.assertIsNotNone(sale.id)
-            self.assertEqual(sale.tenant_id, self.tenant_id)
-            self.assertEqual(sale.store_id, self.store_id)
-            self.assertEqual(sale.customer_id, self.customer_id)
-            self.assertEqual(sale.employee_id, self.employee_id)
-            self.assertEqual(sale.status, "DRAFT")
-
-            self.assertEqual(sale.subtotal, Decimal("0.00"))
-            self.assertEqual(sale.invoice_discount, Decimal("0.00"))
-            self.assertEqual(sale.taxable_amount, Decimal("0.00"))
-            self.assertEqual(sale.gst_amount, Decimal("0.00"))
-            self.assertEqual(sale.total_amount, Decimal("0.00"))
-
-    def test_create_draft_sale_without_customer(self):
-        service = SaleService()
-
-        with Session(self.engine) as session:
-            user = session.get(User, self.user_id)
-
-            sale = service.create_sale(
-                session=session,
-                current_user=user,
-                store_id=self.store_id,
-            )
-
-            session.commit()
-
-            self.assertIsNotNone(sale.id)
-            self.assertEqual(sale.tenant_id, self.tenant_id)
-            self.assertEqual(sale.store_id, self.store_id)
-            self.assertIsNone(sale.customer_id)
-            self.assertEqual(sale.employee_id, self.employee_id)
-            self.assertEqual(sale.status, "DRAFT")
-
-            self.assertEqual(sale.subtotal, Decimal("0.00"))
-            self.assertEqual(sale.invoice_discount, Decimal("0.00"))
-            self.assertEqual(sale.taxable_amount, Decimal("0.00"))
-            self.assertEqual(sale.gst_amount, Decimal("0.00"))
-            self.assertEqual(sale.total_amount, Decimal("0.00"))
-
-    def test_create_sale_rejected_for_inactive_customer(self):
-        service = SaleService()
-
+    def test_confirmation_is_rejected_for_draft_sale(self):
         with Session(self.engine) as session:
             user = session.get(User, self.user_id)
 
             with self.assertRaises(ValueError) as context:
-                service.create_sale(
+                SaleService().confirm_sale(
                     session=session,
                     current_user=user,
-                    store_id=self.store_id,
-                    customer_id=self.inactive_customer_id,
+                    sale_id=self.sale_id,
                 )
 
             self.assertEqual(
                 str(context.exception),
-                "Inactive customers cannot be used for new sales",
+                "Only reserved sales can be confirmed",
+            )
+
+    def test_confirmation_is_rejected_when_payment_is_incomplete(self):
+        with Session(self.engine) as session:
+            self.reserve_sale(session)
+
+            user = session.get(User, self.user_id)
+
+            SaleService().add_sale_payment(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                payment_mode="UPI",
+                amount=Decimal("1000.00"),
+                transaction_reference="UPI-001",
+            )
+
+            with self.assertRaises(ValueError) as context:
+                SaleService().confirm_sale(
+                    session=session,
+                    current_user=user,
+                    sale_id=self.sale_id,
+                )
+
+            self.assertEqual(
+                str(context.exception),
+                "Sale cannot be confirmed until full payment is received",
             )
 
             session.rollback()
 
+    def test_fully_paid_sale_is_confirmed_and_inventory_is_reduced(self):
         with Session(self.engine) as session:
-            sales_count = session.scalar(
-                select(func.count()).select_from(Sale)
-            )
+            self.reserve_sale(session)
+            self.add_full_payment(session)
 
-            self.assertEqual(sales_count, 1)
-
-    def test_successful_sale_reservation(self):
-        service = SaleService()
-
-        with Session(self.engine) as session:
             user = session.get(User, self.user_id)
 
-            sale = service.reserve_sale(
-                session,
-                user,
-                self.sale_id,
+            sale = SaleService().confirm_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
             )
 
             session.commit()
 
-            self.assertEqual(sale.status, "RESERVED")
-            self.assertIsNotNone(sale.reserved_at)
-            self.assertIsNotNone(sale.reservation_warning_at)
-            self.assertIsNotNone(sale.reservation_expires_at)
+            self.assertEqual(
+                sale.status,
+                "CONFIRMED",
+            )
 
         with Session(self.engine) as session:
+            sale = session.get(
+                Sale,
+                self.sale_id,
+            )
+
             inventory = session.scalar(
                 select(Inventory).where(
                     Inventory.tenant_id == self.tenant_id,
@@ -312,154 +320,199 @@ class SaleServiceTests(unittest.TestCase):
                 )
             )
 
-            self.assertIsNotNone(inventory)
-            self.assertEqual(inventory.quantity, 5)
-            self.assertEqual(inventory.reserved_quantity, 3)
-
             movement = session.scalar(
                 select(InventoryMovement).where(
                     InventoryMovement.tenant_id == self.tenant_id,
                     InventoryMovement.product_id == self.product_id,
-                    InventoryMovement.movement_type == "RESERVATION",
+                    InventoryMovement.movement_type == "SALE",
                     InventoryMovement.reference_type == "SALE",
                     InventoryMovement.reference_id == self.sale_id,
                 )
             )
 
+            self.assertEqual(
+                sale.status,
+                "CONFIRMED",
+            )
+
+            self.assertIsNotNone(inventory)
+
+            self.assertEqual(
+                inventory.quantity,
+                3,
+            )
+
+            self.assertEqual(
+                inventory.reserved_quantity,
+                1,
+            )
+
             self.assertIsNotNone(movement)
-            self.assertEqual(movement.quantity, 2)
-            self.assertEqual(movement.from_store_id, self.store_id)
+
+            self.assertEqual(
+                movement.quantity,
+                2,
+            )
+
+            self.assertEqual(
+                movement.from_store_id,
+                self.store_id,
+            )
+
             self.assertEqual(
                 movement.performed_by_employee_id,
                 self.employee_id,
             )
 
-    def test_walk_in_sale_can_be_reserved(self):
-        service = SaleService()
-
+    def test_confirmation_is_rejected_after_already_confirmed(self):
         with Session(self.engine) as session:
-            sale = session.get(Sale, self.sale_id)
-            sale.customer_id = None
-            session.commit()
+            self.reserve_sale(session)
+            self.add_full_payment(session)
 
-        with Session(self.engine) as session:
             user = session.get(User, self.user_id)
-            sale = service.reserve_sale(session, user, self.sale_id)
-            session.commit()
 
-            self.assertIsNone(sale.customer_id)
-            self.assertEqual(sale.status, "RESERVED")
-
-    def test_reservation_rejected_when_inventory_is_insufficient(self):
-        service = SaleService()
-
-        with Session(self.engine) as session:
-            sale_item = session.scalar(
-                select(SaleItem).where(
-                    SaleItem.sale_id == self.sale_id
-                )
+            SaleService().confirm_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
             )
 
-            sale_item.quantity = 5
             session.commit()
 
         with Session(self.engine) as session:
             user = session.get(User, self.user_id)
 
             with self.assertRaises(ValueError) as context:
-                service.reserve_sale(
-                    session,
-                    user,
-                    self.sale_id,
+                SaleService().confirm_sale(
+                    session=session,
+                    current_user=user,
+                    sale_id=self.sale_id,
                 )
 
             self.assertEqual(
                 str(context.exception),
-                "Insufficient available inventory",
+                "Only reserved sales can be confirmed",
             )
 
-            session.rollback()
-
+    def test_confirmed_sale_can_be_delivered(self):
         with Session(self.engine) as session:
-            sale = session.get(Sale, self.sale_id)
-
-            inventory = session.scalar(
-                select(Inventory).where(
-                    Inventory.tenant_id == self.tenant_id,
-                    Inventory.product_id == self.product_id,
-                    Inventory.store_id == self.store_id,
-                )
+            self.reserve_sale(session)
+            self.add_full_payment(session)
+            user = session.get(User, self.user_id)
+            SaleService().confirm_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
             )
-
-            movement = session.scalar(
-                select(InventoryMovement).where(
-                    InventoryMovement.tenant_id == self.tenant_id,
-                    InventoryMovement.product_id == self.product_id,
-                    InventoryMovement.movement_type == "RESERVATION",
-                    InventoryMovement.reference_type == "SALE",
-                    InventoryMovement.reference_id == self.sale_id,
-                )
-            )
-
-            self.assertEqual(sale.status, "DRAFT")
-            self.assertEqual(inventory.quantity, 5)
-            self.assertEqual(inventory.reserved_quantity, 1)
-            self.assertIsNone(movement)
-
-    def test_reservation_rejected_for_inactive_customer(self):
-        service = SaleService()
-
-        with Session(self.engine) as session:
-            customer = session.get(
-                Customer,
-                self.customer_id,
-            )
-
-            customer.is_active = False
             session.commit()
 
         with Session(self.engine) as session:
             user = session.get(User, self.user_id)
+            sale = SaleService().deliver_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+            )
+            session.commit()
+
+            self.assertEqual(sale.status, "DELIVERED")
+
+    def test_upi_cashback_requires_upi_payment(self):
+        with Session(self.engine) as session:
+            sale = session.get(Sale, self.sale_id)
+            sale.cashback_amount = Decimal("100.00")
+            sale.payable_amount = Decimal("1900.00")
+            session.commit()
+            self.reserve_sale(session)
+            user = session.get(User, self.user_id)
+            SaleService().add_sale_payment(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                payment_mode="CASH",
+                amount=Decimal("1900.00"),
+            )
 
             with self.assertRaises(ValueError) as context:
-                service.reserve_sale(
-                    session,
-                    user,
-                    self.sale_id,
+                SaleService().confirm_sale(
+                    session=session,
+                    current_user=user,
+                    sale_id=self.sale_id,
                 )
 
             self.assertEqual(
                 str(context.exception),
-                "Inactive customers cannot be used for new sales",
+                "UPI cashback requires a UPI payment",
             )
 
-            session.rollback()
-
+    def test_multiple_payments_can_complete_confirmation(self):
         with Session(self.engine) as session:
-            sale = session.get(Sale, self.sale_id)
+            self.reserve_sale(session)
 
-            inventory = session.scalar(
-                select(Inventory).where(
-                    Inventory.tenant_id == self.tenant_id,
-                    Inventory.product_id == self.product_id,
-                    Inventory.store_id == self.store_id,
-                )
+            user = session.get(User, self.user_id)
+
+            service = SaleService()
+
+            first_payment = service.add_sale_payment(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                payment_mode="UPI",
+                amount=Decimal("1000.00"),
+                transaction_reference="UPI-001",
             )
 
-            movement = session.scalar(
-                select(InventoryMovement).where(
-                    InventoryMovement.tenant_id == self.tenant_id,
-                    InventoryMovement.product_id == self.product_id,
-                    InventoryMovement.movement_type == "RESERVATION",
-                    InventoryMovement.reference_type == "SALE",
-                    InventoryMovement.reference_id == self.sale_id,
-                )
+            second_payment = service.add_sale_payment(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                payment_mode="CASH",
+                amount=Decimal("1000.00"),
             )
 
-            self.assertEqual(sale.status, "DRAFT")
-            self.assertEqual(inventory.quantity, 5)
-            self.assertEqual(inventory.reserved_quantity, 1)
-            self.assertIsNone(movement)
+            self.assertEqual(
+                first_payment.amount,
+                Decimal("1000.00"),
+            )
+
+            self.assertEqual(
+                second_payment.amount,
+                Decimal("1000.00"),
+            )
+
+            sale = service.confirm_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+            )
+
+            session.commit()
+
+            self.assertEqual(
+                sale.status,
+                "CONFIRMED",
+            )
+
+            payments = session.scalars(
+                select(SalePayment)
+                .where(
+                    SalePayment.sale_id == self.sale_id,
+                )
+                .order_by(SalePayment.id)
+            ).all()
+
+            self.assertEqual(
+                len(payments),
+                2,
+            )
+
+            self.assertEqual(
+                sum(
+                    (payment.amount for payment in payments),
+                    Decimal("0.00"),
+                ),
+                Decimal("2000.00"),
+            )
 
 
 if __name__ == "__main__":

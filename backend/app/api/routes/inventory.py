@@ -16,7 +16,7 @@ def _service() -> InventoryService:
 
 def _row_response(row) -> InventoryResponse:
     inventory, product_name, sku, brand, category, location_type, location_name = row
-    return InventoryResponse(id=inventory.id, product_id=inventory.product_id, product_name=product_name, sku=sku, brand=brand, category=category, location=InventoryLocationSummary(type=location_type, name=location_name), quantity=inventory.quantity, reserved_quantity=inventory.reserved_quantity, available_quantity=inventory.quantity - inventory.reserved_quantity, cost_price=inventory.cost_price)
+    return InventoryResponse(id=inventory.id, product_id=inventory.product_id, store_id=inventory.store_id, godown_id=inventory.godown_id, product_name=product_name, sku=sku, brand=brand, category=category, location=InventoryLocationSummary(type=location_type, name=location_name), quantity=inventory.quantity, reserved_quantity=inventory.reserved_quantity, available_quantity=inventory.quantity - inventory.reserved_quantity, cost_price=inventory.cost_price)
 
 
 @router.get("/form-data", response_model=InventoryFormDataResponse)
@@ -44,8 +44,8 @@ def transfer_inventory(request: InventoryTransferCreate, session: Session = Depe
 
 
 @router.get("", response_model=InventoryListResponse)
-def list_inventory(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant_id), service: InventoryService = Depends(_service)) -> InventoryListResponse:
-    rows, total = service.list_inventory(session, tenant_id, page, page_size)
+def list_inventory(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), product_id: int | None = Query(None, gt=0), store_id: int | None = Query(None, gt=0), session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant_id), service: InventoryService = Depends(_service)) -> InventoryListResponse:
+    rows, total = service.list_inventory(session, tenant_id, page, page_size, product_id, store_id)
     return InventoryListResponse(items=[_row_response(row) for row in rows], page=page, page_size=page_size, total=total)
 
 

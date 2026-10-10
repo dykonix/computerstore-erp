@@ -1,12 +1,14 @@
 from datetime import date
+from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
 from app.models.product_price import ProductPrice
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.sale_payment import SalePayment
 
 
 class SaleRepository:
@@ -99,3 +101,43 @@ class SaleRepository:
         session.add(sale_item)
         session.flush()
         return sale_item
+
+    def create_sale_payment(
+        self,
+        session: Session,
+        sale_payment: SalePayment,
+    ) -> SalePayment:
+        session.add(sale_payment)
+        session.flush()
+        return sale_payment
+
+    def list_sale_payments(
+        self,
+        session: Session,
+        sale_id: int,
+    ) -> list[SalePayment]:
+        statement = (
+            select(SalePayment)
+            .where(SalePayment.sale_id == sale_id)
+            .order_by(SalePayment.id)
+        )
+
+        return list(session.scalars(statement))
+
+    def get_sale_payment_total(
+        self,
+        session: Session,
+        sale_id: int,
+    ) -> Decimal:
+        statement = select(
+            func.coalesce(
+                func.sum(SalePayment.amount),
+                Decimal("0.00"),
+            )
+        ).where(
+            SalePayment.sale_id == sale_id,
+        )
+
+        total = session.scalar(statement)
+
+        return Decimal(total or "0.00")

@@ -11,9 +11,14 @@ from app.models.brand import Brand
 from app.models.category import Category
 from app.models.employee import Employee
 from app.models.employee_store import EmployeeStore
+from app.models.inventory import Inventory
 from app.models.permission import Permission
 from app.models.product import Product
 from app.models.product_price import ProductPrice
+from app.models.promotion import Promotion
+from app.models.promotion_benefit import PromotionBenefit
+from app.models.promotion_group import PromotionGroup
+from app.models.promotion_product import PromotionProduct
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.sale import Sale
@@ -151,6 +156,15 @@ class SaleItemServiceTests(unittest.TestCase):
             )
 
             session.add(sale)
+            session.add(
+                Inventory(
+                    tenant_id=tenant.id,
+                    product_id=product.id,
+                    store_id=store.id,
+                    quantity=5,
+                    reserved_quantity=1,
+                )
+            )
             session.flush()
 
             price = ProductPrice(
@@ -210,7 +224,7 @@ class SaleItemServiceTests(unittest.TestCase):
 
             self.assertEqual(
                 item.gst_amount,
-                Decimal("18000.00"),
+                Decimal("15254.24"),
             )
 
             self.assertEqual(
@@ -253,7 +267,7 @@ class SaleItemServiceTests(unittest.TestCase):
 
             self.assertEqual(
                 item.gst_amount,
-                Decimal("17280.00"),
+                Decimal("14644.07"),
             )
 
     def test_sale_totals_are_recalculated_after_adding_item(self):
@@ -278,18 +292,76 @@ class SaleItemServiceTests(unittest.TestCase):
 
             self.assertEqual(
                 sale.taxable_amount,
-                Decimal("96000.00"),
+                Decimal("81355.93"),
             )
 
             self.assertEqual(
                 sale.gst_amount,
-                Decimal("17280.00"),
+                Decimal("14644.07"),
             )
 
             self.assertEqual(
                 sale.total_amount,
-                Decimal("113280.00"),
+                Decimal("96000.00"),
             )
+
+            self.assertEqual(
+                sale.payable_amount,
+                Decimal("96000.00"),
+            )
+
+    def test_selected_upi_cashback_promotion_reduces_payable(self):
+        with Session(self.engine) as session:
+            promotion = Promotion(
+                tenant_id=self.tenant_id,
+                name="UPI Cashback",
+                valid_from=date.today(),
+                valid_to=date.today(),
+                is_active=True,
+            )
+            session.add(promotion)
+            session.flush()
+
+            group = PromotionGroup(
+                promotion_id=promotion.id,
+                name="Cashback",
+                selection_rule="OPTIONAL",
+            )
+            session.add_all([
+                group,
+                PromotionProduct(
+                    promotion_id=promotion.id,
+                    product_id=self.product_id,
+                ),
+            ])
+            session.flush()
+            session.add(
+                PromotionBenefit(
+                    promotion_group_id=group.id,
+                    benefit_type="CASHBACK",
+                    cashback_amount=Decimal("500.00"),
+                    payment_mode="UPI",
+                )
+            )
+            session.flush()
+
+            user = session.get(User, self.user_id)
+            item = SaleService().add_sale_item(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                product_id=self.product_id,
+                quantity=2,
+                promotion_id=promotion.id,
+            )
+            sale = session.get(Sale, self.sale_id)
+
+            self.assertEqual(item.promotion_name, "UPI Cashback")
+            self.assertEqual(item.promotion_cashback_amount, Decimal("500.00"))
+            self.assertEqual(item.cost_price, Decimal("40000.00"))
+            self.assertEqual(sale.total_amount, Decimal("100000.00"))
+            self.assertEqual(sale.cashback_amount, Decimal("500.00"))
+            self.assertEqual(sale.payable_amount, Decimal("99500.00"))
 
     def test_missing_current_price_is_rejected(self):
         with Session(self.engine) as session:
@@ -310,6 +382,24 @@ class SaleItemServiceTests(unittest.TestCase):
             self.assertEqual(
                 str(context.exception),
                 "No active price found for product",
+            )
+
+    def test_quantity_cannot_exceed_selected_store_availability(self):
+        with Session(self.engine) as session:
+            user = session.get(User, self.user_id)
+
+            with self.assertRaises(ValueError) as context:
+                SaleService().add_sale_item(
+                    session=session,
+                    current_user=user,
+                    sale_id=self.sale_id,
+                    product_id=self.product_id,
+                    quantity=5,
+                )
+
+            self.assertEqual(
+                str(context.exception),
+                "Sale item quantity exceeds available inventory",
             )
 
     def test_inactive_product_is_rejected(self):

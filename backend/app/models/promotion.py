@@ -1,15 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import (
-    Boolean,
-    CheckConstraint,
-    Date,
-    DateTime,
-    ForeignKey,
-    String,
-    func,
-    text,
-)
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -53,8 +44,7 @@ class Promotion(Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
-        default=True,
-        server_default=text("true"),
+        server_default="true",
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -67,5 +57,4 @@ class Promotion(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
-        onupdate=func.now(),
     )

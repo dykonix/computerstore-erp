@@ -17,14 +17,14 @@ class ProductSerialNumber(Base):
     __tablename__ = "product_serial_numbers"
 
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('IN_STOCK', 'RESERVED', 'SOLD')",
+            name="ck_product_serial_numbers_status",
+        ),
         UniqueConstraint(
             "tenant_id",
             "serial_number",
             name="uq_product_serial_numbers_tenant_serial",
-        ),
-        CheckConstraint(
-            "status IN ('IN_STOCK', 'RESERVED', 'SOLD')",
-            name="ck_product_serial_numbers_status",
         ),
     )
 
@@ -51,7 +51,6 @@ class ProductSerialNumber(Base):
     status: Mapped[str] = mapped_column(
         String,
         nullable=False,
-        default="IN_STOCK",
         server_default="IN_STOCK",
     )
 
@@ -65,5 +64,4 @@ class ProductSerialNumber(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
-        onupdate=func.now(),
     )

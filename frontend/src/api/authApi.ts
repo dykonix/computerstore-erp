@@ -1,3 +1,5 @@
+import { apiRequest } from './apiClient'
+
 export interface AuthenticatedUser {
   id: number
   email: string
@@ -10,33 +12,22 @@ export interface LoginResponse {
   token_type: 'bearer'
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  })
-  if (!response.ok) {
-    let detail = `Request failed with status ${response.status}`
-    try {
-      const body = (await response.json()) as { detail?: string }
-      if (body.detail) detail = body.detail
-    } catch {
-      // Keep the status fallback when the server returns a non-JSON error.
-    }
-    throw new Error(detail)
-  }
-  return response.json() as Promise<T>
-}
-
-export function login(email: string, password: string): Promise<LoginResponse> {
-  return request<LoginResponse>('/api/auth/login', {
+export function login(
+  email: string,
+  password: string,
+): Promise<LoginResponse> {
+  return apiRequest<LoginResponse>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   })
 }
 
-export function fetchCurrentUser(accessToken: string): Promise<AuthenticatedUser> {
-  return request<AuthenticatedUser>('/api/auth/me', {
-    headers: { Authorization: `Bearer ${accessToken}` },
+export function fetchCurrentUser(
+  accessToken: string,
+): Promise<AuthenticatedUser> {
+  return apiRequest<AuthenticatedUser>('/api/auth/me', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
   })
 }

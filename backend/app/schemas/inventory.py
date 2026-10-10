@@ -47,6 +47,8 @@ class InventoryLocationSummary(BaseModel):
 class InventoryListItem(BaseModel):
     id: int
     product_id: int
+    store_id: int | None
+    godown_id: int | None
     product_name: str
     sku: str
     brand: str

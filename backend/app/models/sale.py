@@ -10,16 +10,17 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
 
 class Sale(Base):
     __tablename__ = "sales"
+
     __table_args__ = (
         CheckConstraint(
-            "status IN ('DRAFT', 'RESERVED', 'CONFIRMED', 'PICKED', 'ASSEMBLY', 'DELIVERED', 'CANCELLED')",
+            "status IN ('DRAFT', 'RESERVED', 'CONFIRMED', 'DELIVERED')",
             name="ck_sales_status",
         ),
         CheckConstraint(
@@ -39,8 +40,16 @@ class Sale(Base):
             name="ck_sales_gst_amount_nonnegative",
         ),
         CheckConstraint(
+            "cashback_amount >= 0",
+            name="ck_sales_cashback_amount_nonnegative",
+        ),
+        CheckConstraint(
             "total_amount >= 0",
             name="ck_sales_total_amount_nonnegative",
+        ),
+        CheckConstraint(
+            "payable_amount >= 0",
+            name="ck_sales_payable_amount_nonnegative",
         ),
     )
 
@@ -124,6 +133,25 @@ class Sale(Base):
         nullable=False,
         default=0,
         server_default=text("0"),
+    )
+
+    payable_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+
+    cashback_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+
+    items: Mapped[list["SaleItem"]] = relationship(
+        "SaleItem",
+        back_populates="sale",
     )
 
     created_at: Mapped[datetime] = mapped_column(

@@ -172,12 +172,24 @@ class InventoryRepository:
             )
         )
 
-    def count_inventory(self, session: Session, tenant_id: int) -> int:
+    def count_inventory(
+        self,
+        session: Session,
+        tenant_id: int,
+        product_id: int | None = None,
+        store_id: int | None = None,
+    ) -> int:
+        filters = [Inventory.tenant_id == tenant_id]
+        if product_id is not None:
+            filters.append(Inventory.product_id == product_id)
+        if store_id is not None:
+            filters.append(Inventory.store_id == store_id)
+
         return (
             session.scalar(
                 select(func.count())
                 .select_from(Inventory)
-                .where(Inventory.tenant_id == tenant_id)
+                .where(*filters)
             )
             or 0
         )
@@ -188,12 +200,20 @@ class InventoryRepository:
         tenant_id: int,
         offset: int,
         limit: int,
+        product_id: int | None = None,
+        store_id: int | None = None,
     ):
         location_name = func.coalesce(Store.name, Godown.name)
         location_type = case(
             (Inventory.store_id.is_not(None), "Store"),
             else_="Godown",
         )
+
+        filters = [Inventory.tenant_id == tenant_id]
+        if product_id is not None:
+            filters.append(Inventory.product_id == product_id)
+        if store_id is not None:
+            filters.append(Inventory.store_id == store_id)
 
         statement = (
             select(
@@ -210,7 +230,7 @@ class InventoryRepository:
             .join(Category, Category.id == Product.category_id)
             .outerjoin(Store, Store.id == Inventory.store_id)
             .outerjoin(Godown, Godown.id == Inventory.godown_id)
-            .where(Inventory.tenant_id == tenant_id)
+            .where(*filters)
             .order_by(Inventory.id.desc())
             .offset(offset)
             .limit(limit)

@@ -20,6 +20,8 @@ export interface InventoryFormData {
 export interface InventoryItem {
   id: number
   product_id: number
+  store_id: number | null
+  godown_id: number | null
   product_name: string
   sku: string
   brand: string
@@ -63,8 +65,14 @@ export function fetchInventoryFormData(): Promise<InventoryFormData> {
   return apiRequest<InventoryFormData>('/api/inventory/form-data')
 }
 
-export function fetchInventory(): Promise<InventoryListResponse> {
-  return apiRequest<InventoryListResponse>('/api/inventory?page=1&page_size=100')
+export function fetchInventory(
+  productId?: number,
+  storeId?: number,
+): Promise<InventoryListResponse> {
+  const query = new URLSearchParams({ page: '1', page_size: '100' })
+  if (productId !== undefined) query.set('product_id', String(productId))
+  if (storeId !== undefined) query.set('store_id', String(storeId))
+  return apiRequest<InventoryListResponse>(`/api/inventory?${query}`)
 }
 
 export function createOpeningStock(
