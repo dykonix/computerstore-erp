@@ -435,6 +435,11 @@ class PromotionRepository:
         if group is None:
             return False
 
+        db.execute(
+            delete(PromotionBenefit).where(
+                PromotionBenefit.promotion_group_id == group_id
+            )
+        )
         db.delete(group)
         db.flush()
 

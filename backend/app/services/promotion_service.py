@@ -411,17 +411,6 @@ class PromotionService:
         tenant_id: int,
         group_id: int,
     ) -> None:
-        benefits = self.repository.list_benefits(
-            db=session,
-            tenant_id=tenant_id,
-            group_id=group_id,
-        )
-
-        if benefits:
-            raise PromotionValidationError(
-                "Promotion group cannot be deleted while it contains benefits"
-            )
-
         deleted = self.repository.delete_group(
             db=session,
             tenant_id=tenant_id,

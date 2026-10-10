@@ -545,6 +545,123 @@ class PromotionServiceTests(unittest.TestCase):
                 "UPI",
             )
 
+    def test_saved_promotion_reloads_all_benefits_and_qualifying_product(self):
+        service = PromotionService()
+
+        with Session(self.engine) as session:
+            promotion = service.create_promotion(
+                session=session,
+                tenant_id=self.tenant_id,
+                name="Student Offer",
+                valid_from=date(2026, 10, 1),
+                valid_to=date(2026, 10, 31),
+            )
+            group = service.create_group(
+                session=session,
+                tenant_id=self.tenant_id,
+                promotion_id=promotion.id,
+                name="Student Benefits",
+                selection_rule="ALL",
+            )
+            qualifying_product_ids = service.replace_qualifying_products(
+                session=session,
+                tenant_id=self.tenant_id,
+                promotion_id=promotion.id,
+                product_ids=[self.product_id],
+            )
+
+            qualifying_product = session.get(Product, self.product_id)
+            benefit_products = [
+                Product(
+                    tenant_id=self.tenant_id,
+                    category_id=qualifying_product.category_id,
+                    brand_id=qualifying_product.brand_id,
+                    sku=f"BENEFIT-{index}",
+                    name=name,
+                )
+                for index, name in enumerate(
+                    ("Trolley Bag", "Titan Glass", "AI Fiesta"), start=1
+                )
+            ]
+            session.add_all(benefit_products)
+            session.flush()
+
+            expected_product_prices = {
+                product.id: price
+                for product, price in zip(
+                    benefit_products,
+                    (Decimal("699.00"), Decimal("499.00"), Decimal("399.00")),
+                )
+            }
+            for product, price in zip(
+                benefit_products,
+                (Decimal("699.00"), Decimal("499.00"), Decimal("399.00")),
+            ):
+                service.create_product_benefit(
+                    session=session,
+                    tenant_id=self.tenant_id,
+                    group_id=group.id,
+                    product_id=product.id,
+                    promotion_price=price,
+                )
+
+            service.create_cashback_benefit(
+                session=session,
+                tenant_id=self.tenant_id,
+                group_id=group.id,
+                cashback_amount=Decimal("2000.00"),
+                payment_mode="UPI",
+            )
+            promotion_id = promotion.id
+            group_id = group.id
+            session.commit()
+
+        with Session(self.engine) as session:
+            loaded_promotion = service.repository.get_promotion(
+                db=session,
+                tenant_id=self.tenant_id,
+                promotion_id=promotion_id,
+            )
+            loaded_groups = service.repository.list_groups(
+                db=session,
+                tenant_id=self.tenant_id,
+                promotion_id=promotion_id,
+            )
+            loaded_product_ids = service.repository.list_qualifying_product_ids(
+                db=session,
+                tenant_id=self.tenant_id,
+                promotion_id=promotion_id,
+            )
+            loaded_benefits = service.repository.list_benefits(
+                db=session,
+                tenant_id=self.tenant_id,
+                group_id=group_id,
+            )
+
+            self.assertEqual(loaded_promotion.name, "Student Offer")
+            self.assertEqual([group.id for group in loaded_groups], [group_id])
+            self.assertTrue(qualifying_product_ids)
+            self.assertEqual(loaded_product_ids, [self.product_id])
+            self.assertEqual(len(loaded_benefits), 4)
+            self.assertTrue(
+                all(benefit.promotion_group_id == group_id for benefit in loaded_benefits)
+            )
+            self.assertEqual(
+                {
+                    benefit.product_id: benefit.promotion_price
+                    for benefit in loaded_benefits
+                    if benefit.benefit_type == "PRODUCT"
+                },
+                expected_product_prices,
+            )
+            cashback = next(
+                benefit
+                for benefit in loaded_benefits
+                if benefit.benefit_type == "CASHBACK"
+            )
+            self.assertEqual(cashback.cashback_amount, Decimal("2000.00"))
+            self.assertEqual(cashback.payment_mode, "UPI")
+
     def test_cashback_rejects_negative_amount(self):
         service = PromotionService()
 
@@ -621,7 +738,7 @@ class PromotionServiceTests(unittest.TestCase):
     # Group deletion rule
     # ------------------------------------------------------------------
 
-    def test_group_with_benefits_cannot_be_deleted(self):
+    def test_deleting_group_removes_only_its_benefits(self):
         service = PromotionService()
 
         with Session(self.engine) as session:
@@ -631,8 +748,95 @@ class PromotionServiceTests(unittest.TestCase):
                 session=session,
                 promotion_id=promotion.id,
             )
+            other_group = service.create_group(
+                session=session,
+                tenant_id=self.tenant_id,
+                promotion_id=promotion.id,
+                name="Unrelated Benefits",
+                selection_rule="OPTIONAL",
+            )
+            service.add_qualifying_product(
+                session=session,
+                tenant_id=self.tenant_id,
+                promotion_id=promotion.id,
+                product_id=self.product_id,
+            )
 
             service.create_product_benefit(
+                session=session,
+                tenant_id=self.tenant_id,
+                group_id=group.id,
+                product_id=self.product_id,
+                promotion_price=Decimal("100.00"),
+            )
+            service.create_cashback_benefit(
+                session=session,
+                tenant_id=self.tenant_id,
+                group_id=group.id,
+                cashback_amount=Decimal("200.00"),
+                payment_mode="UPI",
+            )
+            other_benefit = service.create_product_benefit(
+                session=session,
+                tenant_id=self.tenant_id,
+                group_id=other_group.id,
+                product_id=self.product_id,
+                promotion_price=Decimal("50.00"),
+            )
+
+            service.delete_group(
+                session=session,
+                tenant_id=self.tenant_id,
+                group_id=group.id,
+            )
+
+            self.assertIsNone(
+                service.repository.get_group(
+                    db=session,
+                    tenant_id=self.tenant_id,
+                    group_id=group.id,
+                )
+            )
+            self.assertEqual(
+                service.repository.list_benefits(
+                    db=session,
+                    tenant_id=self.tenant_id,
+                    group_id=group.id,
+                ),
+                [],
+            )
+            self.assertEqual(
+                [item.id for item in service.repository.list_groups(
+                    db=session,
+                    tenant_id=self.tenant_id,
+                    promotion_id=promotion.id,
+                )],
+                [other_group.id],
+            )
+            self.assertEqual(
+                [item.id for item in service.repository.list_benefits(
+                    db=session,
+                    tenant_id=self.tenant_id,
+                    group_id=other_group.id,
+                )],
+                [other_benefit.id],
+            )
+            self.assertEqual(
+                service.repository.list_qualifying_product_ids(
+                    db=session,
+                    tenant_id=self.tenant_id,
+                    promotion_id=promotion.id,
+                ),
+                [self.product_id],
+            )
+
+    def test_delete_missing_group_fails_without_changing_existing_group(self):
+        service = PromotionService()
+
+        with Session(self.engine) as session:
+            promotion = self.create_promotion(session)
+            group = self.create_group(session, promotion.id)
+            benefit = service.create_product_benefit(
                 session=session,
                 tenant_id=self.tenant_id,
                 group_id=group.id,
@@ -644,8 +848,23 @@ class PromotionServiceTests(unittest.TestCase):
                 service.delete_group(
                     session=session,
                     tenant_id=self.tenant_id,
+                    group_id=-1,
+                )
+
+            self.assertIsNotNone(
+                service.repository.get_group(
+                    db=session,
+                    tenant_id=self.tenant_id,
                     group_id=group.id,
                 )
+            )
+            self.assertIsNotNone(
+                service.repository.get_benefit(
+                    db=session,
+                    tenant_id=self.tenant_id,
+                    benefit_id=benefit.id,
+                )
+            )
 
     def test_empty_group_can_be_deleted(self):
         service = PromotionService()
