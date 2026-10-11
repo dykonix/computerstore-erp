@@ -32,6 +32,7 @@ CATEGORY_NAMES = [
     "Headphones",
     "Tablets",
     "Hard Disk",
+    "Others",
 ]
 
 BRAND_NAMES = [
@@ -46,6 +47,7 @@ BRAND_NAMES = [
     "Western Digital",
     "Sony",
     "JBL",
+    "Others",
 ]
 
 BRAND_CATEGORIES = {
@@ -197,6 +199,8 @@ def get_or_create_category(session: Session, name: str) -> Category:
     if category is None:
         category = Category(name=name)
         session.add(category)
+    elif name == "Others":
+        category.is_active = True
     return category
 
 
@@ -205,6 +209,8 @@ def get_or_create_brand(session: Session, name: str) -> Brand:
     if brand is None:
         brand = Brand(name=name)
         session.add(brand)
+    elif name == "Others":
+        brand.is_active = True
     return brand
 
 

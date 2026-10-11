@@ -35,11 +35,15 @@ export interface PromotionGroup {
   promotion_id: number
   name: string
   selection_rule: string
+  group_requirement: 'REQUIRED' | 'OPTIONAL' | null
+  benefit_selection_rule: 'ONE' | 'ANY' | 'ALL' | null
 }
 
 export interface PromotionGroupRequest {
   name: string
-  selection_rule: string
+  selection_rule?: string
+  group_requirement?: 'REQUIRED' | 'OPTIONAL'
+  benefit_selection_rule?: 'ONE' | 'ANY' | 'ALL'
 }
 
 export interface PromotionBenefit {
@@ -51,6 +55,11 @@ export interface PromotionBenefit {
   promotion_price: number | null
   cashback_amount: number | null
   payment_mode: string | null
+  product_name?: string | null
+}
+
+export interface PromotionSaleGroup extends PromotionGroup {
+  benefits: PromotionBenefit[]
 }
 
 export interface ProductBenefitRequest {
@@ -146,6 +155,14 @@ export function fetchPromotionGroups(
 ): Promise<PromotionGroup[]> {
   return apiRequest<PromotionGroup[]>(
     `/api/promotions/${promotionId}/groups`,
+  )
+}
+
+export function fetchPromotionBenefitGroups(
+  promotionId: number,
+): Promise<PromotionSaleGroup[]> {
+  return apiRequest<PromotionSaleGroup[]>(
+    `/api/promotions/${promotionId}/benefits`,
   )
 }
 

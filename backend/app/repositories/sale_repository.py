@@ -8,7 +8,9 @@ from app.models.category import Category
 from app.models.product_price import ProductPrice
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.sale_item_serial_number import SaleItemSerialNumber
 from app.models.sale_payment import SalePayment
+from app.models.product_serial_number import ProductSerialNumber
 
 
 class SaleRepository:
@@ -89,9 +91,25 @@ class SaleRepository:
         statement = select(SaleItem).where(
             SaleItem.sale_id == sale_id,
             SaleItem.product_id == product_id,
+            SaleItem.is_promotion_benefit.is_(False),
         )
 
         return session.scalar(statement)
+
+    def get_sale_item_for_promotion_benefit(
+        self,
+        session: Session,
+        sale_id: int,
+        source_sale_item_id: int,
+        promotion_benefit_id: int,
+    ) -> SaleItem | None:
+        return session.scalar(
+            select(SaleItem).where(
+                SaleItem.sale_id == sale_id,
+                SaleItem.promotion_source_sale_item_id == source_sale_item_id,
+                SaleItem.promotion_benefit_id == promotion_benefit_id,
+            )
+        )
 
     def create_sale_item(
         self,
@@ -101,6 +119,42 @@ class SaleRepository:
         session.add(sale_item)
         session.flush()
         return sale_item
+
+    def list_sale_item_serials(
+        self, session: Session, sale_item_id: int
+    ) -> list[ProductSerialNumber]:
+        statement = (
+            select(ProductSerialNumber)
+            .join(
+                SaleItemSerialNumber,
+                SaleItemSerialNumber.product_serial_number_id
+                == ProductSerialNumber.id,
+            )
+            .where(SaleItemSerialNumber.sale_item_id == sale_item_id)
+            .order_by(ProductSerialNumber.id)
+        )
+        return list(session.scalars(statement))
+
+    def get_sale_item_serial_assignment(
+        self, session: Session, product_serial_number_id: int
+    ) -> SaleItemSerialNumber | None:
+        return session.scalar(
+            select(SaleItemSerialNumber).where(
+                SaleItemSerialNumber.product_serial_number_id
+                == product_serial_number_id
+            )
+        )
+
+    def add_sale_item_serial(
+        self, session: Session, sale_item_id: int, product_serial_number_id: int
+    ) -> SaleItemSerialNumber:
+        assignment = SaleItemSerialNumber(
+            sale_item_id=sale_item_id,
+            product_serial_number_id=product_serial_number_id,
+        )
+        session.add(assignment)
+        session.flush()
+        return assignment
 
     def create_sale_payment(
         self,

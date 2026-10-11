@@ -18,13 +18,18 @@ from app.models.employee import Employee
 from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
 from app.models.product_price import ProductPrice
+from app.models.store import Store
+from app.models.supplier import Supplier
 from app.api.routes.products import _product_response
+from app.schemas.inventory import OpeningStockCreate
 from app.schemas.product import (
     ProductAttributeValueCreate,
     ProductCreate,
     ProductPriceCreate,
     ProductPriceUpdate,
 )
+from app.seed import BRAND_NAMES, CATEGORY_NAMES, get_or_create_brand, get_or_create_category
+from app.services.inventory_service import InventoryService
 from app.services.product_service import (
     ProductNotFoundError,
     ProductPriceNotFoundError,
@@ -62,8 +67,10 @@ class ProductServiceTests(unittest.TestCase):
             tenant = Tenant(name="Tenant")
             category = Category(name="Laptop")
             second_category = Category(name="Desktop")
+            others_category = Category(name="Others", is_active=False)
             active_brand = Brand(name="HP")
             second_brand = Brand(name="Lenovo")
+            others_brand = Brand(name="Others", is_active=False)
             inactive_brand = Brand(name="Inactive", is_active=False)
             select_attribute = Attribute(name="RAM", data_type="SELECT")
             multi_attribute = Attribute(name="Connectors", data_type="MULTI_SELECT")
@@ -73,8 +80,10 @@ class ProductServiceTests(unittest.TestCase):
                     tenant,
                     category,
                     second_category,
+                    others_category,
                     active_brand,
                     second_brand,
+                    others_brand,
                     inactive_brand,
                     select_attribute,
                     multi_attribute,
@@ -126,8 +135,10 @@ class ProductServiceTests(unittest.TestCase):
             self.tenant_id = tenant.id
             self.category_id = category.id
             self.second_category_id = second_category.id
+            self.others_category_id = others_category.id
             self.brand_id = active_brand.id
             self.second_brand_id = second_brand.id
+            self.others_brand_id = others_brand.id
             self.inactive_brand_id = inactive_brand.id
             self.select_attribute_id = select_attribute.id
             self.number_attribute_id = number_attribute.id
@@ -198,6 +209,149 @@ class ProductServiceTests(unittest.TestCase):
             self.assertEqual(session.get(Product, product_id).name, "HP OmniBook")
             self.assertEqual(
                 session.scalar(select(func.count()).select_from(ProductAttributeValue)),
+                1,
+            )
+
+    def test_product_search_matches_name_sku_and_brand_and_excludes_category(self):
+        with Session(self.engine) as session:
+            session.add_all(
+                [
+                    Product(
+                        tenant_id=self.tenant_id,
+                        category_id=self.category_id,
+                        brand_id=self.brand_id,
+                        sku="NB-778",
+                        name="Notebook Prime",
+                    ),
+                    Product(
+                        tenant_id=self.tenant_id,
+                        category_id=self.others_category_id,
+                        brand_id=self.second_brand_id,
+                        sku="GEN-778",
+                        name="Generic Accessory",
+                    ),
+                ]
+            )
+            session.commit()
+
+        with Session(self.engine) as session:
+            for query in ("Notebook", "NB-778", "HP"):
+                with self.subTest(query=query):
+                    rows, total = ProductService().list_products(
+                        session,
+                        self.tenant_id,
+                        1,
+                        20,
+                        search_query=query,
+                        exclude_category_name="Others",
+                    )
+                    self.assertEqual(total, 1)
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0][0].name, "Notebook Prime")
+
+            rows, total = ProductService().list_products(
+                session,
+                self.tenant_id,
+                1,
+                20,
+                search_query="Generic",
+                exclude_category_name="Others",
+            )
+            self.assertEqual(rows, [])
+            self.assertEqual(total, 0)
+
+            inactive = Product(
+                tenant_id=self.tenant_id,
+                category_id=self.category_id,
+                brand_id=self.brand_id,
+                sku="OLD-778",
+                name="Inactive Notebook",
+                is_active=False,
+            )
+            session.add(inactive)
+            session.commit()
+            rows, total = ProductService().list_products(
+                session,
+                self.tenant_id,
+                1,
+                20,
+                search_query="Notebook",
+                exclude_category_name="Others",
+                active_only=True,
+            )
+            self.assertEqual(total, 1)
+            self.assertEqual([row[0].name for row in rows], ["Notebook Prime"])
+
+    def test_others_product_without_sku_supports_price_and_inventory(self):
+        with Session(self.engine) as session:
+            get_or_create_category(session, "Others")
+            get_or_create_brand(session, "Others")
+            session.commit()
+        request = ProductCreate(
+            name="Generic accessory",
+            category_id=self.others_category_id,
+            brand_id=self.others_brand_id,
+            attributes=[],
+        )
+        product_id = self.create(request)
+        with Session(self.engine) as session:
+            product = session.get(Product, product_id)
+            self.assertEqual(product.sku, "")
+            self.assertEqual(product.category_id, self.others_category_id)
+            self.assertEqual(product.brand_id, self.others_brand_id)
+
+        price_id = self.create_price(
+            product_id,
+            self.price_request(
+                cost_price=Decimal("125.00"), sale_price=Decimal("249.00")
+            ),
+        )
+        with Session(self.engine) as session:
+            price = session.get(ProductPrice, price_id)
+            self.assertEqual(price.cost_price, Decimal("125.00"))
+            self.assertEqual(price.sale_price, Decimal("249.00"))
+            store = Store(tenant_id=self.tenant_id, name="Main Store")
+            supplier = Supplier(tenant_id=self.tenant_id, name="Supplier")
+            session.add_all([store, supplier])
+            session.commit()
+            store_id, supplier_id = store.id, supplier.id
+
+        with Session(self.engine) as session:
+            inventory = InventoryService().create_opening_stock(
+                session,
+                self.tenant_id,
+                OpeningStockCreate(
+                    product_id=product_id,
+                    supplier_id=supplier_id,
+                    store_id=store_id,
+                    quantity=4,
+                    cost_price=Decimal("125.00"),
+                ),
+            )
+            inventory_id = inventory.id
+        with Session(self.engine) as session:
+            inventory = session.get(Inventory, inventory_id)
+            self.assertEqual(inventory.product_id, product_id)
+            self.assertEqual(inventory.quantity, 4)
+            self.assertEqual(inventory.cost_price, Decimal("125.00"))
+
+    def test_others_seed_records_are_reused_and_active(self):
+        self.assertIn("Others", CATEGORY_NAMES)
+        self.assertIn("Others", BRAND_NAMES)
+        with Session(self.engine) as session:
+            category = get_or_create_category(session, "Others")
+            brand = get_or_create_brand(session, "Others")
+            session.flush()
+            self.assertEqual(get_or_create_category(session, "Others").id, category.id)
+            self.assertEqual(get_or_create_brand(session, "Others").id, brand.id)
+            self.assertTrue(category.is_active)
+            self.assertTrue(brand.is_active)
+            self.assertEqual(
+                session.scalar(select(func.count()).select_from(Category).where(Category.name == "Others")),
+                1,
+            )
+            self.assertEqual(
+                session.scalar(select(func.count()).select_from(Brand).where(Brand.name == "Others")),
                 1,
             )
 

@@ -1,7 +1,9 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PromotionCreateRequest(BaseModel):
@@ -49,12 +51,34 @@ class ProductPromotionResponse(BaseModel):
 
 class PromotionGroupCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    selection_rule: str
+    selection_rule: str | None = None
+    group_requirement: Literal["REQUIRED", "OPTIONAL"] | None = None
+    benefit_selection_rule: Literal["ONE", "ANY", "ALL"] | None = None
+
+    @model_validator(mode="after")
+    def validate_rules(self) -> "PromotionGroupCreateRequest":
+        split_rules = self.group_requirement is not None or self.benefit_selection_rule is not None
+        if split_rules and (self.group_requirement is None or self.benefit_selection_rule is None):
+            raise ValueError("Both group_requirement and benefit_selection_rule are required")
+        if not split_rules and self.selection_rule is None:
+            raise ValueError("Legacy selection_rule or both split rules are required")
+        return self
 
 
 class PromotionGroupUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    selection_rule: str
+    selection_rule: str | None = None
+    group_requirement: Literal["REQUIRED", "OPTIONAL"] | None = None
+    benefit_selection_rule: Literal["ONE", "ANY", "ALL"] | None = None
+
+    @model_validator(mode="after")
+    def validate_rules(self) -> "PromotionGroupUpdateRequest":
+        split_rules = self.group_requirement is not None or self.benefit_selection_rule is not None
+        if split_rules and (self.group_requirement is None or self.benefit_selection_rule is None):
+            raise ValueError("Both group_requirement and benefit_selection_rule are required")
+        if not split_rules and self.selection_rule is None:
+            raise ValueError("Legacy selection_rule or both split rules are required")
+        return self
 
 
 class PromotionGroupResponse(BaseModel):
@@ -64,6 +88,8 @@ class PromotionGroupResponse(BaseModel):
     promotion_id: int
     name: str
     selection_rule: str
+    group_requirement: str | None = None
+    benefit_selection_rule: str | None = None
 
 
 class ProductBenefitRequest(BaseModel):
@@ -92,3 +118,8 @@ class PromotionBenefitResponse(BaseModel):
     promotion_price: Decimal | None
     cashback_amount: Decimal | None
     payment_mode: str | None
+    product_name: str | None = None
+
+
+class PromotionSaleGroupResponse(PromotionGroupResponse):
+    benefits: list[PromotionBenefitResponse] = Field(default_factory=list)

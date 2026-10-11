@@ -23,6 +23,8 @@ class PromotionService:
         "ALL",
         "OPTIONAL",
     }
+    VALID_GROUP_REQUIREMENTS = {"REQUIRED", "OPTIONAL"}
+    VALID_BENEFIT_SELECTION_RULES = {"ONE", "ANY", "ALL"}
 
     VALID_BENEFIT_TYPES = {
         "PRODUCT",
@@ -353,7 +355,9 @@ class PromotionService:
         tenant_id: int,
         promotion_id: int,
         name: str,
-        selection_rule: str,
+        selection_rule: str | None = None,
+        group_requirement: str | None = None,
+        benefit_selection_rule: str | None = None,
     ):
         promotion = self.repository.get_promotion(
             db=session,
@@ -368,7 +372,14 @@ class PromotionService:
 
         normalized_name = self._validate_name(name)
 
-        self._validate_selection_rule(selection_rule)
+        if group_requirement is not None or benefit_selection_rule is not None:
+            if group_requirement not in self.VALID_GROUP_REQUIREMENTS:
+                raise PromotionValidationError("Invalid promotion group requirement")
+            if benefit_selection_rule not in self.VALID_BENEFIT_SELECTION_RULES:
+                raise PromotionValidationError("Invalid benefit selection rule")
+            selection_rule = group_requirement
+        else:
+            self._validate_selection_rule(selection_rule)
 
         return self.repository.create_group(
             db=session,
@@ -376,6 +387,8 @@ class PromotionService:
             promotion_id=promotion_id,
             name=normalized_name,
             selection_rule=selection_rule,
+            group_requirement=group_requirement,
+            benefit_selection_rule=benefit_selection_rule,
         )
 
     def update_group(
@@ -384,11 +397,20 @@ class PromotionService:
         tenant_id: int,
         group_id: int,
         name: str,
-        selection_rule: str,
+        selection_rule: str | None = None,
+        group_requirement: str | None = None,
+        benefit_selection_rule: str | None = None,
     ):
         normalized_name = self._validate_name(name)
 
-        self._validate_selection_rule(selection_rule)
+        if group_requirement is not None or benefit_selection_rule is not None:
+            if group_requirement not in self.VALID_GROUP_REQUIREMENTS:
+                raise PromotionValidationError("Invalid promotion group requirement")
+            if benefit_selection_rule not in self.VALID_BENEFIT_SELECTION_RULES:
+                raise PromotionValidationError("Invalid benefit selection rule")
+            selection_rule = None
+        else:
+            self._validate_selection_rule(selection_rule)
 
         group = self.repository.update_group(
             db=session,
@@ -396,6 +418,8 @@ class PromotionService:
             group_id=group_id,
             name=normalized_name,
             selection_rule=selection_rule,
+            group_requirement=group_requirement,
+            benefit_selection_rule=benefit_selection_rule,
         )
 
         if group is None:

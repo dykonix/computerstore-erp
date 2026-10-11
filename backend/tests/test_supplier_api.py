@@ -188,13 +188,13 @@ class SupplierAPITests(unittest.TestCase):
         supplier_routes = {
             (path, tuple(sorted(method.upper() for method in operations)))
             for path, operations in app.openapi()["paths"].items()
-            if path.startswith("/suppliers")
+            if path.startswith("/api/suppliers")
         }
         self.assertEqual(
             supplier_routes,
             {
-                ("/suppliers", ("GET", "POST")),
-                ("/suppliers/{supplier_id}", ("GET", "PUT")),
+                ("/api/suppliers", ("GET", "POST")),
+                ("/api/suppliers/{supplier_id}", ("GET", "PUT")),
             },
         )
 

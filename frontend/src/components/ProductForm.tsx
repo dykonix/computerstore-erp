@@ -113,7 +113,6 @@ export default function ProductForm({
     if (!categoryId) nextErrors.category_id = 'Choose a category.'
     if (!brandId) nextErrors.brand_id = 'Choose a brand.'
     if (!name.trim()) nextErrors.name = 'Product name is required.'
-    if (!sku.trim()) nextErrors.sku = 'SKU is required.'
     const parsedSalePrice = Number(salePrice)
     const parsedMinimumSalePrice = minimumSalePrice === '' ? null : Number(minimumSalePrice)
     if (salePrice === '' || !Number.isFinite(parsedSalePrice) || parsedSalePrice < 0) {
@@ -211,10 +210,9 @@ export default function ProductForm({
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. OmniBook AI 14" />
           {errors.name && <small>{errors.name}</small>}
         </label>
-        <label className={errors.sku ? 'has-error' : ''}>
-          <span>SKU <b>*</b></span>
+        <label>
+          <span>SKU <em>Optional</em></span>
           <input value={sku} onChange={(event) => setSku(event.target.value)} placeholder="e.g. HP-OMNI-14" />
-          {errors.sku && <small>{errors.sku}</small>}
         </label>
       </div>
 

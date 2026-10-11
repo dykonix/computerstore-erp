@@ -93,11 +93,22 @@ def create_product(
 def list_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None, max_length=100),
+    exclude_category: str | None = Query(None, max_length=255),
+    active_only: bool = Query(False),
     session: Session = Depends(get_db),
     tenant_id: int = Depends(get_current_tenant_id),
     service: ProductService = Depends(_service),
 ) -> ProductListResponse:
-    rows, total = service.list_products(session, tenant_id, page, page_size)
+    rows, total = service.list_products(
+        session,
+        tenant_id,
+        page,
+        page_size,
+        search,
+        exclude_category,
+        active_only,
+    )
     return ProductListResponse(
         items=[
             ProductListItem(
@@ -107,6 +118,7 @@ def list_products(
                 category=CategorySummary(id=product.category_id, name=category_name),
                 brand=BrandSummary(id=product.brand_id, name=brand_name),
                 is_active=product.is_active,
+                requires_serial_number=product.requires_serial_number,
             )
             for product, category_name, brand_name in rows
         ],

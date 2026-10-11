@@ -48,6 +48,7 @@ export interface ProductListItem {
   category: Category
   brand: Brand
   is_active: boolean
+  requires_serial_number: boolean
 }
 
 export interface ProductListResponse {
@@ -55,6 +56,14 @@ export interface ProductListResponse {
   page: number
   page_size: number
   total: number
+}
+
+export interface ProductListQuery {
+  page?: number
+  pageSize?: number
+  search?: string
+  excludeCategory?: string
+  activeOnly?: boolean
 }
 
 export interface ProductAttributeValueResponse {
@@ -100,7 +109,7 @@ export interface ProductAttributeValueCreate {
 }
 
 export interface ProductCreateRequest {
-  sku: string
+  sku?: string
   name: string
   category_id: number
   brand_id: number
@@ -113,8 +122,15 @@ export function fetchProductFormData(): Promise<ProductFormData> {
   return apiRequest<ProductFormData>('/api/products/form-data')
 }
 
-export function fetchProducts(): Promise<ProductListResponse> {
-  return apiRequest<ProductListResponse>('/api/products?page=1&page_size=100')
+export function fetchProducts(query: ProductListQuery = {}): Promise<ProductListResponse> {
+  const parameters = new URLSearchParams({
+    page: String(query.page ?? 1),
+    page_size: String(query.pageSize ?? 100),
+  })
+  if (query.search) parameters.set('search', query.search)
+  if (query.excludeCategory) parameters.set('exclude_category', query.excludeCategory)
+  if (query.activeOnly) parameters.set('active_only', 'true')
+  return apiRequest<ProductListResponse>(`/api/products?${parameters.toString()}`)
 }
 
 export function createProduct(

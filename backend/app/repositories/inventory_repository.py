@@ -136,6 +136,26 @@ class InventoryRepository:
         session.flush()
         return movement
 
+    def list_product_balances(
+        self, session: Session, tenant_id: int, product_id: int
+    ):
+        location_type = case(
+            (Inventory.store_id.is_not(None), "Store"),
+            else_="Godown",
+        )
+        return list(
+            session.execute(
+                select(Inventory, location_type, func.coalesce(Store.name, Godown.name))
+                .outerjoin(Store, Store.id == Inventory.store_id)
+                .outerjoin(Godown, Godown.id == Inventory.godown_id)
+                .where(
+                    Inventory.tenant_id == tenant_id,
+                    Inventory.product_id == product_id,
+                )
+                .order_by(func.coalesce(Store.name, Godown.name))
+            ).all()
+        )
+
     def list_products(self, session: Session, tenant_id: int) -> list[Product]:
         return list(
             session.scalars(

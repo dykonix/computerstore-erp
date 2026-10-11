@@ -26,6 +26,7 @@ from app.models.attribute_option import AttributeOption
 from app.models.product_attribute_value import ProductAttributeValue
 from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
+import app.models  # noqa: F401 - registers every model on Base.metadata
 import os
 load_dotenv()
 # this is the Alembic Config object, which provides

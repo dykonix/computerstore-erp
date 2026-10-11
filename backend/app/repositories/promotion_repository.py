@@ -375,6 +375,8 @@ class PromotionRepository:
         promotion_id: int,
         name: str,
         selection_rule: str,
+        group_requirement: str | None = None,
+        benefit_selection_rule: str | None = None,
     ) -> PromotionGroup | None:
         promotion = PromotionRepository.get_promotion(
             db=db,
@@ -389,6 +391,8 @@ class PromotionRepository:
             promotion_id=promotion_id,
             name=name,
             selection_rule=selection_rule,
+            group_requirement=group_requirement,
+            benefit_selection_rule=benefit_selection_rule,
         )
 
         db.add(group)
@@ -403,6 +407,8 @@ class PromotionRepository:
         group_id: int,
         name: str,
         selection_rule: str,
+        group_requirement: str | None = None,
+        benefit_selection_rule: str | None = None,
     ) -> PromotionGroup | None:
         group = PromotionRepository.get_group(
             db=db,
@@ -414,7 +420,11 @@ class PromotionRepository:
             return None
 
         group.name = name
-        group.selection_rule = selection_rule
+        if selection_rule is not None:
+            group.selection_rule = selection_rule
+        if group_requirement is not None and benefit_selection_rule is not None:
+            group.group_requirement = group_requirement
+            group.benefit_selection_rule = benefit_selection_rule
 
         db.flush()
 

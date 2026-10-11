@@ -17,7 +17,7 @@ class ProductAttributeValueCreate(BaseModel):
 class ProductCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    sku: str
+    sku: str = ""
     name: str
     category_id: int
     brand_id: int
@@ -72,6 +72,7 @@ class ProductListItem(BaseModel):
     category: CategorySummary
     brand: BrandSummary
     is_active: bool
+    requires_serial_number: bool
 
 
 class ProductListResponse(BaseModel):

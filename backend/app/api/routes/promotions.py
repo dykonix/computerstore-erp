@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.database.session import get_db
+from app.models.product import Product
 from app.models.user import User
 from app.schemas.promotion import (
     CashbackBenefitRequest,
@@ -18,6 +19,7 @@ from app.schemas.promotion import (
     ProductPromotionResponse,
     PromotionProductsRequest,
     PromotionResponse,
+    PromotionSaleGroupResponse,
     PromotionUpdateRequest,
     WarrantyBenefitRequest,
 )
@@ -50,6 +52,8 @@ def _group_response(group) -> PromotionGroupResponse:
         promotion_id=group.promotion_id,
         name=group.name,
         selection_rule=group.selection_rule,
+        group_requirement=group.group_requirement,
+        benefit_selection_rule=group.benefit_selection_rule,
     )
 
 
@@ -314,6 +318,54 @@ def list_groups(
     return [_group_response(group) for group in groups]
 
 
+@router.get(
+    "/{promotion_id}/benefits",
+    response_model=list[PromotionSaleGroupResponse],
+)
+def list_promotion_benefit_groups(
+    promotion_id: int,
+    session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    service: PromotionService = Depends(_service),
+) -> list[PromotionSaleGroupResponse]:
+    promotion = service.repository.get_promotion(
+        db=session,
+        tenant_id=current_user.tenant_id,
+        promotion_id=promotion_id,
+    )
+    if promotion is None:
+        raise HTTPException(status_code=404, detail="Promotion not found")
+
+    groups = service.repository.list_groups(
+        db=session,
+        tenant_id=current_user.tenant_id,
+        promotion_id=promotion_id,
+    )
+    return [
+        PromotionSaleGroupResponse(
+            **_group_response(group).model_dump(),
+            benefits=[
+                _benefit_response(benefit).model_copy(
+                    update={
+                        "product_name": (
+                            product.name
+                            if benefit.product_id is not None
+                            and (product := session.get(Product, benefit.product_id)) is not None
+                            else None
+                        )
+                    }
+                )
+                for benefit in service.repository.list_benefits(
+                    db=session,
+                    tenant_id=current_user.tenant_id,
+                    group_id=group.id,
+                )
+            ],
+        )
+        for group in groups
+    ]
+
+
 @router.post(
     "/{promotion_id}/groups",
     response_model=PromotionGroupResponse,
@@ -333,6 +385,8 @@ def create_group(
             promotion_id=promotion_id,
             name=request.name,
             selection_rule=request.selection_rule,
+            group_requirement=request.group_requirement,
+            benefit_selection_rule=request.benefit_selection_rule,
         )
 
         return _group_response(group)
@@ -359,6 +413,8 @@ def update_group(
             group_id=group_id,
             name=request.name,
             selection_rule=request.selection_rule,
+            group_requirement=request.group_requirement,
+            benefit_selection_rule=request.benefit_selection_rule,
         )
 
         return _group_response(group)

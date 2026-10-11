@@ -12,6 +12,7 @@ from app.models.category import Category
 from app.models.product import Product
 from app.models.tenant import Tenant
 from app.models.warranty_option import WarrantyOption
+from app.services.sale_service import SaleService
 from app.services.promotion_service import (
     PromotionService,
     PromotionValidationError,
@@ -345,6 +346,74 @@ class PromotionServiceTests(unittest.TestCase):
                 group.selection_rule,
                 "ONE",
             )
+
+    def test_split_group_and_benefit_selection_rules(self):
+        service = PromotionService()
+        sale_service = SaleService()
+        with Session(self.engine) as session:
+            promotion = self.create_promotion(session)
+            benefit_ids = {}
+            for requirement, selection_rule, benefit_count in (
+                ("REQUIRED", "ONE", 2),
+                ("REQUIRED", "ANY", 2),
+                ("REQUIRED", "ALL", 2),
+                ("OPTIONAL", "ONE", 2),
+                ("OPTIONAL", "ANY", 2),
+                ("OPTIONAL", "ALL", 2),
+            ):
+                group = service.create_group(
+                    session=session,
+                    tenant_id=self.tenant_id,
+                    promotion_id=promotion.id,
+                    name=f"{requirement} {selection_rule}",
+                    group_requirement=requirement,
+                    benefit_selection_rule=selection_rule,
+                )
+                benefit_ids[(requirement, selection_rule)] = [
+                    service.create_product_benefit(
+                        session=session,
+                        tenant_id=self.tenant_id,
+                        group_id=group.id,
+                        product_id=self.product_id,
+                        promotion_price=Decimal("100.00"),
+                    ).id
+                    for _ in range(benefit_count)
+                ]
+
+            valid_selection = {
+                benefit_ids[("REQUIRED", "ONE")][0],
+                *benefit_ids[("REQUIRED", "ANY")],
+                *benefit_ids[("REQUIRED", "ALL")],
+                benefit_ids[("OPTIONAL", "ANY")][0],
+            }
+            product_benefits, cashback = sale_service._validate_selected_promotion_benefits(
+                session=session,
+                tenant_id=self.tenant_id,
+                promotion_id=promotion.id,
+                selected_benefit_ids=list(valid_selection),
+            )
+            self.assertEqual(len(product_benefits), 6)
+            self.assertEqual(cashback, Decimal("0.00"))
+
+            with self.assertRaises(ValueError):
+                sale_service._validate_selected_promotion_benefits(
+                    session=session,
+                    tenant_id=self.tenant_id,
+                    promotion_id=promotion.id,
+                    selected_benefit_ids=list(
+                        valid_selection | {benefit_ids[("REQUIRED", "ONE")][1]}
+                    ),
+                )
+
+            with self.assertRaises(ValueError):
+                sale_service._validate_selected_promotion_benefits(
+                    session=session,
+                    tenant_id=self.tenant_id,
+                    promotion_id=promotion.id,
+                    selected_benefit_ids=list(
+                        valid_selection - {benefit_ids[("REQUIRED", "ONE")][0]}
+                    ),
+                )
 
     def test_create_group_rejects_invalid_selection_rule(self):
         service = PromotionService()

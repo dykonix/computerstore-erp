@@ -50,11 +50,11 @@
 label { display: flex; flex-direction: column; gap: 7px; color: var(--ink); font-size: .76rem; font-weight: 800; }
 label > span { min-height: 17px; }
 label em { color: var(--muted); font-style: normal; font-weight: 500; }
-label input, label select, label textarea { width: 100%; border: 1px solid #cfc6bc; border-radius: 2px; padding: 11px 12px; color: var(--ink); background: #fff; font: inherit; font-size: .88rem; font-weight: 500; outline: none; transition: border-color .2s, box-shadow .2s; }
+label input, label select, label textarea, .sales-product-search > input { width: 100%; border: 1px solid #cfc6bc; border-radius: 2px; padding: 11px 12px; color: var(--ink); background: #fff; font: inherit; font-size: .88rem; font-weight: 500; outline: none; transition: border-color .2s, box-shadow .2s; }
 label textarea { resize: vertical; min-height: 84px; }
 label select[multiple] { min-height: 120px; padding: 5px; }
 label select[multiple] option { padding: 7px; }
-label input:focus, label select:focus, label textarea:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(169, 40, 40, .1); }
+label input:focus, label select:focus, label textarea:focus, .sales-product-search > input:focus { border-color: var(--red); box-shadow: 0 0 0 3px rgba(169, 40, 40, .1); }
 .full-width { margin-top: 2px; }
 .attribute-section { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--line); }
 .section-heading--list { padding: 24px 26px 20px; border-bottom: 1px solid var(--line); }
@@ -92,6 +92,47 @@ label small { color: var(--red); font-size: .7rem; font-weight: 600; }
 .category-actions { display: flex; gap: 8px; }
 .inventory-list small { color: var(--muted); font-size: .7rem; }
 .available-value { color: var(--green); font-weight: 800; }
+.sales-page { animation: appear .3s ease-out; }
+.sales-page .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.sales-page .page-header > button, .sales-page .form-actions button, .sales-product-results button, .legacy-group-mapping button { border: 0; border-radius: 2px; padding: 10px 15px; color: #fff; background: var(--red); font: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; }
+.sales-page .page-header > button:hover, .sales-page .form-actions button:hover, .sales-product-results button:hover, .legacy-group-mapping button:hover { background: var(--red-dark); }
+.sales-page .page-header > button:disabled, .sales-page button:disabled { opacity: .55; cursor: not-allowed; }
+.sales-workspace { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.sales-workspace > .form-section { min-width: 0; border: 1px solid var(--line); border-radius: 3px; padding: 20px; background: var(--panel); box-shadow: 0 8px 24px rgba(75, 52, 31, .04); }
+.sales-workspace > .form-section:nth-child(n + 3) { grid-column: 1 / -1; }
+.sales-page .form-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-top: 14px; }
+.sales-page .form-section label { min-width: 0; }
+.sales-product-search { position: relative; grid-column: span 1; }
+.sales-product-results { position: absolute; z-index: 5; top: calc(100% + 3px); right: 0; left: 0; max-height: 260px; overflow-y: auto; border: 1px solid var(--line); background: #fff; box-shadow: 0 10px 24px rgba(37, 35, 33, .14); }
+.sales-product-results p { margin: 0; padding: 12px; color: var(--muted); font-size: .82rem; }
+.sales-product-results button { display: flex; width: 100%; align-items: flex-start; justify-content: space-between; gap: 14px; border-radius: 0; border-bottom: 1px solid #eee8e1; color: var(--ink); background: #fff; text-align: left; }
+.sales-product-results button:hover { color: #fff; }
+.sales-product-results button span { color: var(--muted); font-size: .72rem; font-weight: 600; text-align: right; }
+.sales-product-results button:hover span { color: #fff; }
+.sales-promotion-benefits { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+.sales-other-stock { display: grid; gap: 6px; border: 1px solid var(--line); padding: 12px; background: #fcf9f5; font-size: .8rem; }
+.sales-other-stock ul { margin: 0; padding-left: 18px; }
+.sales-other-stock p, .sales-other-stock small { margin: 0; color: var(--muted); }
+.sales-benefit-unit { display: grid; gap: 10px; border-bottom: 1px solid var(--line); padding: 10px 0 14px; }
+.sales-benefit-unit h4 { margin: 0; color: var(--red-dark); font-size: .82rem; }
+.sales-benefit-option { display: grid; grid-template-columns: minmax(0, 1fr) minmax(145px, .5fr); gap: 12px; align-items: center; }
+.sales-benefit-option label { min-width: 0; }
+.delivery-serial-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 18px 0 0; border: 1px solid var(--line); padding: 16px; }
+.delivery-serial-group legend { padding: 0 6px; color: var(--ink); font-weight: 800; }
+.sales-promotion-benefits h3 { margin: 0; color: var(--ink); font: 600 1.15rem Georgia, serif; }
+.sales-promotion-benefits fieldset { display: grid; gap: 8px; min-width: 0; border: 1px solid var(--line); padding: 12px; }
+.sales-promotion-benefits legend { padding: 0 5px; color: var(--ink); font-weight: 800; }
+.sales-promotion-benefits fieldset > small, .sales-promotion-benefits fieldset > p { margin: 0; color: var(--muted); font-size: .75rem; }
+.sales-promotion-benefits label { display: flex; flex-direction: row; align-items: flex-start; gap: 8px; font-size: .8rem; font-weight: 600; }
+.sales-promotion-benefits label input { width: auto; margin: 2px 0 0; }
+.sales-benefit-caption { display: block; margin-top: 4px; color: var(--muted); font-size: .68rem; }
+.sales-page .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 16px; }
+.sales-page .summary-grid > div { display: grid; gap: 5px; border-left: 2px solid var(--line); padding: 8px 12px; }
+.sales-page .summary-grid span { color: var(--muted); font-size: .72rem; }
+.sales-page .summary-grid strong { color: var(--ink); font-size: 1rem; }
+.sales-page .table-wrapper { overflow-x: auto; }
+.legacy-group-mapping { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; margin-top: 12px; padding: 12px; background: #fcf9f5; }
+.legacy-group-mapping strong { grid-column: 1 / -1; color: var(--ink); font-size: .8rem; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; text-align: left; }
 th, td { padding: 14px 26px; border-bottom: 1px solid #eee8e1; white-space: nowrap; }
@@ -123,4 +164,10 @@ tbody tr:last-child td { border-bottom: 0; }
   .warranty-form-grid, .warranty-price-grid { grid-template-columns: 1fr; }
   .section-heading--list { padding: 20px 19px 17px; }
   th, td { padding: 12px 17px; }
+  .sales-page .page-header { align-items: flex-start; flex-direction: column; }
+  .sales-workspace { grid-template-columns: minmax(0, 1fr); }
+  .sales-workspace > .form-section { grid-column: 1; }
+  .sales-product-search { grid-column: 1; }
+  .legacy-group-mapping { grid-template-columns: 1fr; }
+  .sales-benefit-option { grid-template-columns: minmax(0, 1fr); }
 }

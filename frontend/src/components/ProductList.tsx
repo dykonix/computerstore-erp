@@ -24,7 +24,7 @@ export default function ProductList({ products, loading, onEdit, editingProductI
             <tbody>
               {products.map((product) => (
                 <tr key={product.id}>
-                  <td className="mono">{product.sku}</td>
+                  <td className="mono">{product.sku || '-'}</td>
                   <td className="product-name-cell">{product.name}</td>
                   <td>{product.category.name}</td>
                   <td>{product.brand.name}</td>

@@ -11,6 +11,7 @@ import {
   fetchPromotionProducts,
   fetchPromotions,
   replacePromotionProducts,
+  updatePromotionGroup,
   updatePromotion,
   type Promotion,
   type PromotionBenefit,
@@ -21,7 +22,8 @@ import type { ProductListItem } from '../api/productApi'
 
 type BenefitFormType = 'PRODUCT' | 'WARRANTY' | 'CASHBACK'
 
-const selectionRules = ['REQUIRED', 'ONE', 'ALL', 'OPTIONAL'] as const
+const groupRequirements = ['REQUIRED', 'OPTIONAL'] as const
+const benefitSelectionRules = ['ONE', 'ANY', 'ALL'] as const
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString()
@@ -75,8 +77,13 @@ export default function PromotionMaster() {
   const [isActive, setIsActive] = useState(true)
 
   const [groupName, setGroupName] = useState('')
-  const [groupRule, setGroupRule] =
-    useState<(typeof selectionRules)[number]>('REQUIRED')
+  const [groupRequirement, setGroupRequirement] = useState<(typeof groupRequirements)[number]>('REQUIRED')
+  const [benefitSelectionRule, setBenefitSelectionRule] = useState<(typeof benefitSelectionRules)[number]>('ALL')
+  const [legacyRuleDrafts, setLegacyRuleDrafts] = useState<Record<number, {
+    group_requirement: (typeof groupRequirements)[number] | ''
+    benefit_selection_rule: (typeof benefitSelectionRules)[number] | ''
+  }>>({})
+  const [mappingGroupId, setMappingGroupId] = useState<number | null>(null)
 
   const [benefitGroupId, setBenefitGroupId] = useState<number | null>(null)
   const [benefitType, setBenefitType] =
@@ -273,7 +280,8 @@ export default function PromotionMaster() {
 
       const group = await createPromotionGroup(selectedPromotion.id, {
         name: groupName.trim(),
-        selection_rule: groupRule,
+        group_requirement: groupRequirement,
+        benefit_selection_rule: benefitSelectionRule,
       })
 
       setGroups((current) => [...current, group])
@@ -283,7 +291,8 @@ export default function PromotionMaster() {
       }))
 
       setGroupName('')
-      setGroupRule('REQUIRED')
+      setGroupRequirement('REQUIRED')
+      setBenefitSelectionRule('ALL')
       setSuccess('Benefit group created.')
     } catch (groupError) {
       setError(
@@ -291,6 +300,30 @@ export default function PromotionMaster() {
           ? groupError.message
           : 'Unable to create benefit group.',
       )
+    }
+  }
+
+  async function handleMapLegacyGroup(group: PromotionGroup) {
+    const rules = legacyRuleDrafts[group.id]
+    if (!rules?.group_requirement || !rules.benefit_selection_rule) {
+      setError('Choose both rules before mapping this legacy group.')
+      return
+    }
+
+    setMappingGroupId(group.id)
+    setError('')
+    try {
+      const updated = await updatePromotionGroup(group.id, {
+        name: group.name,
+        group_requirement: rules.group_requirement,
+        benefit_selection_rule: rules.benefit_selection_rule,
+      })
+      setGroups((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setSuccess('Legacy benefit group rules mapped.')
+    } catch (mappingError) {
+      setError(mappingError instanceof Error ? mappingError.message : 'Unable to map benefit group rules.')
+    } finally {
+      setMappingGroupId(null)
     }
   }
 
@@ -674,7 +707,7 @@ export default function PromotionMaster() {
                 onSubmit={handleCreateGroup}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr auto',
+                  gridTemplateColumns: '2fr 1fr 1fr auto',
                   gap: '10px',
                   marginBottom: '20px',
                 }}
@@ -686,18 +719,19 @@ export default function PromotionMaster() {
                 />
 
                 <select
-                  value={groupRule}
-                  onChange={(event) =>
-                    setGroupRule(
-                      event.target.value as (typeof selectionRules)[number],
-                    )
-                  }
+                  value={groupRequirement}
+                  aria-label="Benefit group requirement"
+                  onChange={(event) => setGroupRequirement(event.target.value as (typeof groupRequirements)[number])}
                 >
-                  {selectionRules.map((rule) => (
-                    <option key={rule} value={rule}>
-                      {rule}
-                    </option>
-                  ))}
+                  {groupRequirements.map((rule) => <option key={rule} value={rule}>{rule}</option>)}
+                </select>
+
+                <select
+                  value={benefitSelectionRule}
+                  aria-label="Benefit selection rule"
+                  onChange={(event) => setBenefitSelectionRule(event.target.value as (typeof benefitSelectionRules)[number])}
+                >
+                  {benefitSelectionRules.map((rule) => <option key={rule} value={rule}>{rule}</option>)}
                 </select>
 
                 <button type="submit">Add Group</button>
@@ -730,7 +764,9 @@ export default function PromotionMaster() {
                             <strong>{group.name}</strong>
                             <div>
                               <small>
-                                Selection rule: {group.selection_rule}
+                                {group.group_requirement && group.benefit_selection_rule
+                                  ? `Group ${group.group_requirement} · Benefits ${group.benefit_selection_rule}`
+                                  : `Legacy rule: ${group.selection_rule}`}
                               </small>
                             </div>
                           </div>
@@ -744,6 +780,47 @@ export default function PromotionMaster() {
                             Delete
                           </button>
                         </div>
+
+                        {(!group.group_requirement || !group.benefit_selection_rule) && (
+                          <div className="legacy-group-mapping">
+                            <strong>Map legacy rules</strong>
+                            <select
+                              aria-label={`Group requirement for ${group.name}`}
+                              value={legacyRuleDrafts[group.id]?.group_requirement ?? ''}
+                              onChange={(event) => setLegacyRuleDrafts((current) => ({
+                                ...current,
+                                [group.id]: {
+                                  ...current[group.id],
+                                  group_requirement: event.target.value as (typeof groupRequirements)[number] | '',
+                                },
+                              }))}
+                            >
+                              <option value="">Choose group requirement</option>
+                              {groupRequirements.map((rule) => <option key={rule} value={rule}>{rule}</option>)}
+                            </select>
+                            <select
+                              aria-label={`Benefit selection rule for ${group.name}`}
+                              value={legacyRuleDrafts[group.id]?.benefit_selection_rule ?? ''}
+                              onChange={(event) => setLegacyRuleDrafts((current) => ({
+                                ...current,
+                                [group.id]: {
+                                  ...current[group.id],
+                                  benefit_selection_rule: event.target.value as (typeof benefitSelectionRules)[number] | '',
+                                },
+                              }))}
+                            >
+                              <option value="">Choose benefit selection</option>
+                              {benefitSelectionRules.map((rule) => <option key={rule} value={rule}>{rule}</option>)}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={mappingGroupId === group.id}
+                              onClick={() => void handleMapLegacyGroup(group)}
+                            >
+                              {mappingGroupId === group.id ? 'Saving...' : 'Save rules'}
+                            </button>
+                          </div>
+                        )}
 
                         <div style={{ marginTop: '12px' }}>
                           <strong>Benefits</strong>

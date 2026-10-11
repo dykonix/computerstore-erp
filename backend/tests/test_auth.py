@@ -135,7 +135,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(set(payload), {"sub", "exp"})
 
     def test_auth_login_route_is_registered(self):
-        self.assertIn("/auth/login", app.openapi()["paths"])
+        self.assertIn("/api/auth/login", app.openapi()["paths"])
 
     def test_email_is_normalized_before_lookup(self):
         self.add_user(employee_id=self.employee_a_id)

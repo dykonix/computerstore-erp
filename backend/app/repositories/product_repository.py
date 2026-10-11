@@ -172,22 +172,64 @@ class ProductRepository:
         )
 
     def count_products(self, session: Session, tenant_id: int) -> int:
-        return session.scalar(
-            select(func.count()).select_from(Product).where(Product.tenant_id == tenant_id)
-        ) or 0
+        return self.count_filtered_products(session, tenant_id)
+
+    def count_filtered_products(
+        self,
+        session: Session,
+        tenant_id: int,
+        search_query: str | None = None,
+        exclude_category_name: str | None = None,
+        active_only: bool = False,
+    ) -> int:
+        statement = (
+            select(func.count())
+            .select_from(Product)
+            .join(Category, Category.id == Product.category_id)
+            .join(Brand, Brand.id == Product.brand_id)
+            .where(Product.tenant_id == tenant_id)
+        )
+        if search_query and search_query.strip():
+            search_pattern = f"%{search_query.strip()}%"
+            statement = statement.where(
+                Product.name.ilike(search_pattern)
+                | Product.sku.ilike(search_pattern)
+                | Brand.name.ilike(search_pattern)
+            )
+        if exclude_category_name:
+            statement = statement.where(Category.name != exclude_category_name)
+        if active_only:
+            statement = statement.where(Product.is_active.is_(True))
+        return session.scalar(statement) or 0
 
     def list_products(
-        self, session: Session, tenant_id: int, offset: int, limit: int
+        self,
+        session: Session,
+        tenant_id: int,
+        offset: int,
+        limit: int,
+        search_query: str | None = None,
+        exclude_category_name: str | None = None,
+        active_only: bool = False,
     ) -> list[tuple[Product, str, str]]:
         statement = (
             select(Product, Category.name, Brand.name)
             .join(Category, Category.id == Product.category_id)
             .join(Brand, Brand.id == Product.brand_id)
             .where(Product.tenant_id == tenant_id)
-            .order_by(Product.id.desc())
-            .offset(offset)
-            .limit(limit)
         )
+        if search_query and search_query.strip():
+            search_pattern = f"%{search_query.strip()}%"
+            statement = statement.where(
+                Product.name.ilike(search_pattern)
+                | Product.sku.ilike(search_pattern)
+                | Brand.name.ilike(search_pattern)
+            )
+        if exclude_category_name:
+            statement = statement.where(Category.name != exclude_category_name)
+        if active_only:
+            statement = statement.where(Product.is_active.is_(True))
+        statement = statement.order_by(Product.id.desc()).offset(offset).limit(limit)
         return list(session.execute(statement).all())
 
     def get_product(

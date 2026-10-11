@@ -26,6 +26,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.sale_item_serial_number import SaleItemSerialNumber
 from app.models.customer import Customer
 from app.models.sale_payment import SalePayment
 from app.models.user_role import UserRole
@@ -55,6 +56,7 @@ __all__ = [
     "PromotionGroup",
     "PromotionProduct",
     "SaleItem",
+    "SaleItemSerialNumber",
     "SalePayment",
     "Role",
     "RolePermission",

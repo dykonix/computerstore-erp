@@ -18,6 +18,7 @@ from app.models.inventory_movement import InventoryMovement
 from app.models.permission import Permission
 from app.models.product import Product
 from app.models.product_price import ProductPrice
+from app.models.product_serial_number import ProductSerialNumber
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.sale import Sale
@@ -210,6 +211,7 @@ class SaleConfirmationServiceTests(unittest.TestCase):
             )
 
             session.add(sale_item)
+            session.flush()
 
             session.commit()
 
@@ -219,6 +221,7 @@ class SaleConfirmationServiceTests(unittest.TestCase):
             self.product_id = product.id
             self.user_id = user.id
             self.sale_id = sale.id
+            self.sale_item_id = sale_item.id
 
     def reserve_sale(self, session):
         user = session.get(User, self.user_id)
@@ -364,6 +367,159 @@ class SaleConfirmationServiceTests(unittest.TestCase):
                 self.employee_id,
             )
 
+    def test_manufacturer_shipped_benefit_does_not_reserve_or_consume_store_stock(self):
+        with Session(self.engine) as session:
+            source_item = session.get(SaleItem, self.sale_item_id)
+            source_product = session.get(Product, self.product_id)
+            gift_product = Product(
+                tenant_id=self.tenant_id,
+                category_id=source_product.category_id,
+                brand_id=source_product.brand_id,
+                sku="MFG-GIFT-001",
+                name="Manufacturer Gift",
+            )
+            session.add(gift_product)
+            session.flush()
+            session.add(
+                SaleItem(
+                    sale_id=self.sale_id,
+                    product_id=gift_product.id,
+                    promotion_benefit_id=1,
+                    promotion_benefit_name=gift_product.name,
+                    promotion_source_sale_item_id=source_item.id,
+                    is_promotion_benefit=True,
+                    promotion_benefit_source="MANUFACTURER",
+                    quantity=source_item.quantity,
+                    configured_unit_price=Decimal("0.00"),
+                    configured_minimum_price=Decimal("0.00"),
+                    actual_unit_price=Decimal("0.00"),
+                    is_free_product=True,
+                    cost_price=Decimal("0.00"),
+                    gst_rate=Decimal("0.00"),
+                    gst_amount=Decimal("0.00"),
+                    discount_amount=Decimal("0.00"),
+                    line_total=Decimal("0.00"),
+                )
+            )
+            gift_product_id = gift_product.id
+            session.commit()
+
+        with Session(self.engine) as session:
+            self.reserve_sale(session)
+            inventory = session.scalar(
+                select(Inventory).where(
+                    Inventory.product_id == self.product_id,
+                    Inventory.store_id == self.store_id,
+                )
+            )
+            self.assertEqual(inventory.reserved_quantity, 3)
+            self.assertIsNone(
+                session.scalar(
+                    select(Inventory).where(
+                        Inventory.product_id == gift_product_id,
+                        Inventory.store_id == self.store_id,
+                    )
+                )
+            )
+            self.add_full_payment(session)
+            user = session.get(User, self.user_id)
+            SaleService().confirm_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+            )
+            session.commit()
+
+        with Session(self.engine) as session:
+            gift_movements = session.scalars(
+                select(InventoryMovement).where(
+                    InventoryMovement.product_id == gift_product_id,
+                    InventoryMovement.reference_id == self.sale_id,
+                )
+            ).all()
+            self.assertEqual(gift_movements, [])
+
+    def test_store_supplied_benefit_reserves_and_consumes_inventory(self):
+        with Session(self.engine) as session:
+            source_item = session.get(SaleItem, self.sale_item_id)
+            source_product = session.get(Product, self.product_id)
+            gift_product = Product(
+                tenant_id=self.tenant_id,
+                category_id=source_product.category_id,
+                brand_id=source_product.brand_id,
+                sku="STORE-GIFT-001",
+                name="Store Gift",
+            )
+            session.add(gift_product)
+            session.flush()
+            session.add_all(
+                [
+                    Inventory(
+                        tenant_id=self.tenant_id,
+                        product_id=gift_product.id,
+                        store_id=self.store_id,
+                        quantity=2,
+                        reserved_quantity=0,
+                    ),
+                    SaleItem(
+                        sale_id=self.sale_id,
+                        product_id=gift_product.id,
+                        promotion_benefit_id=2,
+                        promotion_benefit_name=gift_product.name,
+                        promotion_source_sale_item_id=source_item.id,
+                        promotion_benefit_source="STORE",
+                        is_promotion_benefit=True,
+                        quantity=1,
+                        configured_unit_price=Decimal("0.00"),
+                        configured_minimum_price=Decimal("0.00"),
+                        actual_unit_price=Decimal("0.00"),
+                        is_free_product=True,
+                        cost_price=Decimal("0.00"),
+                        gst_rate=Decimal("0.00"),
+                        gst_amount=Decimal("0.00"),
+                        discount_amount=Decimal("0.00"),
+                        line_total=Decimal("0.00"),
+                    ),
+                ]
+            )
+            gift_product_id = gift_product.id
+            session.commit()
+
+        with Session(self.engine) as session:
+            self.reserve_sale(session)
+            inventory = session.scalar(
+                select(Inventory).where(
+                    Inventory.product_id == gift_product_id,
+                    Inventory.store_id == self.store_id,
+                )
+            )
+            self.assertEqual((inventory.quantity, inventory.reserved_quantity), (2, 1))
+            self.add_full_payment(session)
+            user = session.get(User, self.user_id)
+            SaleService().confirm_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+            )
+            session.commit()
+
+        with Session(self.engine) as session:
+            inventory = session.scalar(
+                select(Inventory).where(
+                    Inventory.product_id == gift_product_id,
+                    Inventory.store_id == self.store_id,
+                )
+            )
+            movement = session.scalar(
+                select(InventoryMovement).where(
+                    InventoryMovement.product_id == gift_product_id,
+                    InventoryMovement.movement_type == "SALE",
+                    InventoryMovement.reference_id == self.sale_id,
+                )
+            )
+            self.assertEqual((inventory.quantity, inventory.reserved_quantity), (1, 0))
+            self.assertEqual(movement.quantity, 1)
+
     def test_confirmation_is_rejected_after_already_confirmed(self):
         with Session(self.engine) as session:
             self.reserve_sale(session)
@@ -415,6 +571,125 @@ class SaleConfirmationServiceTests(unittest.TestCase):
             )
             session.commit()
 
+            self.assertEqual(sale.status, "DELIVERED")
+
+    def test_delivery_saves_one_serial_per_serialized_unit(self):
+        with Session(self.engine) as session:
+            product = session.get(Product, self.product_id)
+            product.requires_serial_number = True
+            session.get(Sale, self.sale_id).status = "CONFIRMED"
+            session.commit()
+
+        with Session(self.engine) as session:
+            user = session.get(User, self.user_id)
+            sale = SaleService().deliver_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                serial_numbers_by_item={
+                    self.sale_item_id: ["HP-SN-UNIT-1", "HP-SN-UNIT-2"]
+                },
+                allow_missing_serial_numbers=False,
+            )
+            serials = SaleService().sale_repository.list_sale_item_serials(
+                session, self.sale_item_id
+            )
+            self.assertEqual(sale.status, "DELIVERED")
+            self.assertEqual(
+                [serial.serial_number for serial in serials],
+                ["HP-SN-UNIT-1", "HP-SN-UNIT-2"],
+            )
+            self.assertTrue(all(serial.status == "SOLD" for serial in serials))
+
+    def test_delivery_rejects_serial_assigned_to_another_sale(self):
+        with Session(self.engine) as session:
+            product = session.get(Product, self.product_id)
+            product.requires_serial_number = True
+            session.get(Sale, self.sale_id).status = "CONFIRMED"
+            serial = ProductSerialNumber(
+                tenant_id=self.tenant_id,
+                product_id=self.product_id,
+                serial_number="HP-SN-TAKEN",
+                status="SOLD",
+            )
+            session.add(serial)
+            session.commit()
+
+        with Session(self.engine) as session:
+            user = session.get(User, self.user_id)
+            with self.assertRaisesRegex(ValueError, "not available"):
+                SaleService().deliver_sale(
+                    session=session,
+                    current_user=user,
+                    sale_id=self.sale_id,
+                    serial_numbers_by_item={self.sale_item_id: ["HP-SN-TAKEN"]},
+                    allow_missing_serial_numbers=True,
+                )
+
+    def test_delivery_rejects_serial_for_another_product(self):
+        with Session(self.engine) as session:
+            product = session.get(Product, self.product_id)
+            product.requires_serial_number = True
+            other_product = Product(
+                tenant_id=self.tenant_id,
+                category_id=product.category_id,
+                brand_id=product.brand_id,
+                sku="OTHER-SERIAL-PRODUCT",
+                name="Other Product",
+            )
+            session.add(other_product)
+            session.flush()
+            session.add(
+                ProductSerialNumber(
+                    tenant_id=self.tenant_id,
+                    product_id=other_product.id,
+                    serial_number="OTHER-PRODUCT-SERIAL",
+                    status="IN_STOCK",
+                )
+            )
+            session.get(Sale, self.sale_id).status = "CONFIRMED"
+            session.commit()
+
+        with Session(self.engine) as session:
+            user = session.get(User, self.user_id)
+            with self.assertRaisesRegex(ValueError, "belongs to another product"):
+                SaleService().deliver_sale(
+                    session=session,
+                    current_user=user,
+                    sale_id=self.sale_id,
+                    serial_numbers_by_item={
+                        self.sale_item_id: ["OTHER-PRODUCT-SERIAL"]
+                    },
+                    allow_missing_serial_numbers=True,
+                )
+
+    def test_missing_serials_warn_but_delivery_can_proceed_when_allowed(self):
+        with Session(self.engine) as session:
+            product = session.get(Product, self.product_id)
+            product.requires_serial_number = True
+            session.get(Sale, self.sale_id).status = "CONFIRMED"
+            session.commit()
+
+        with Session(self.engine) as session:
+            user = session.get(User, self.user_id)
+            with self.assertRaisesRegex(ValueError, "Serial numbers are missing"):
+                SaleService().deliver_sale(
+                    session=session,
+                    current_user=user,
+                    sale_id=self.sale_id,
+                    serial_numbers_by_item={},
+                    allow_missing_serial_numbers=False,
+                )
+
+        with Session(self.engine) as session:
+            user = session.get(User, self.user_id)
+            sale = SaleService().deliver_sale(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                serial_numbers_by_item={},
+                allow_missing_serial_numbers=True,
+            )
             self.assertEqual(sale.status, "DELIVERED")
 
     def test_upi_cashback_requires_upi_payment(self):

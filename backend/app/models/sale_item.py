@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -7,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Numeric,
+    UniqueConstraint,
     func,
     text,
 )
@@ -14,11 +16,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 
+if TYPE_CHECKING:
+    from app.models.sale import Sale
+
 
 class SaleItem(Base):
     __tablename__ = "sale_items"
 
     __table_args__ = (
+        UniqueConstraint(
+            "sale_id",
+            "promotion_source_sale_item_id",
+            "promotion_benefit_id",
+            name="uq_sale_items_sale_promotion_benefit",
+        ),
         CheckConstraint(
             "quantity > 0",
             name="ck_sale_items_quantity_positive",
@@ -59,6 +70,16 @@ class SaleItem(Base):
             "promotion_cashback_amount >= 0",
             name="ck_sale_items_promotion_cashback_nonnegative",
         ),
+        CheckConstraint(
+            "(is_promotion_benefit = false AND promotion_benefit_id IS NULL "
+            "AND promotion_source_sale_item_id IS NULL "
+            "AND promotion_benefit_source IS NULL) OR "
+            "(is_promotion_benefit = true AND promotion_benefit_id IS NOT NULL "
+            "AND promotion_benefit_name IS NOT NULL "
+            "AND promotion_source_sale_item_id IS NOT NULL "
+            "AND promotion_benefit_source IN ('STORE', 'MANUFACTURER'))",
+            name="ck_sale_items_promotion_benefit_metadata",
+        ),
     )
 
     id: Mapped[int] = mapped_column(
@@ -95,6 +116,19 @@ class SaleItem(Base):
         nullable=False,
         default=0,
         server_default=text("0"),
+    )
+
+    promotion_benefit_id: Mapped[int | None] = mapped_column(nullable=True)
+    promotion_benefit_name: Mapped[str | None] = mapped_column(nullable=True)
+    promotion_source_sale_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sale_items.id"), nullable=True
+    )
+    promotion_benefit_source: Mapped[str | None] = mapped_column(nullable=True)
+    is_promotion_benefit: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
     )
 
     quantity: Mapped[int] = mapped_column(

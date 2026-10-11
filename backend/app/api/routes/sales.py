@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.database.session import get_db
+from app.models.product import Product
 from app.models.user import User
 from app.schemas.sale import (
     SaleCreate,
@@ -10,15 +11,45 @@ from app.schemas.sale import (
     SaleItemResponse,
     SalePaymentCreate,
     SalePaymentResponse,
+    SaleDeliveryRequest,
+    ProductAvailabilityResponse,
     SaleResponse,
 )
 from app.services.sale_service import SaleService
+from app.services.authorization_service import PermissionDeniedError
+from app.repositories.sale_repository import SaleRepository
 
 
 router = APIRouter(
     prefix="/sales",
     tags=["sales"],
 )
+
+
+def _sale_response(session: Session, sale) -> SaleResponse:
+    response = SaleResponse.model_validate(sale)
+    repository = SaleRepository()
+    return response.model_copy(
+        update={
+            "items": [
+                item.model_copy(
+                    update={
+                        "serial_numbers": [
+                            serial.serial_number
+                            for serial in repository.list_sale_item_serials(
+                                session, item.id
+                            )
+                        ],
+                        "requires_serial_number": bool(
+                            (product := session.get(Product, item.product_id))
+                            and product.requires_serial_number
+                        ),
+                    }
+                )
+                for item in response.items
+            ]
+        }
+    )
 
 
 def _service() -> SaleService:
@@ -36,17 +67,41 @@ def create_sale(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        return _service().create_sale(
+        sale = _service().create_sale(
             session=session,
             current_user=current_user,
             store_id=request.store_id,
             customer_id=request.customer_id,
         )
+        return _sale_response(session, sale)
     except ValueError as error:
         raise HTTPException(
             status_code=400,
             detail=str(error),
         ) from error
+
+
+@router.get(
+    "/availability/{product_id}",
+    response_model=ProductAvailabilityResponse,
+)
+def get_product_availability(
+    product_id: int,
+    store_id: int,
+    session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return _service().get_product_availability(
+            session=session,
+            current_user=current_user,
+            store_id=store_id,
+            product_id=product_id,
+        )
+    except PermissionDeniedError as error:
+        raise HTTPException(status_code=403, detail="Permission denied") from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.get(
@@ -71,7 +126,7 @@ def get_sale(
             detail="Sale not found",
         )
 
-    return sale
+    return _sale_response(session, sale)
 
 
 @router.post(
@@ -97,6 +152,9 @@ def add_sale_item(
             minimum_price_override=request.minimum_price_override,
             is_free_product=request.is_free_product,
             promotion_id=request.promotion_id,
+            promotion_benefit_ids=request.promotion_benefit_ids,
+            promotion_benefit_ids_by_unit=request.promotion_benefit_ids_by_unit,
+            promotion_benefit_sources_by_unit=request.promotion_benefit_sources_by_unit,
         )
     except ValueError as error:
         raise HTTPException(
@@ -116,11 +174,12 @@ def reserve_sale(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        return _service().reserve_sale(
+        sale = _service().reserve_sale(
             session,
             current_user,
             sale_id,
         )
+        return _sale_response(session, sale)
     except ValueError as error:
         raise HTTPException(
             status_code=400,
@@ -181,11 +240,12 @@ def confirm_sale(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        return _service().confirm_sale(
+        sale = _service().confirm_sale(
             session=session,
             current_user=current_user,
             sale_id=sale_id,
         )
+        return _sale_response(session, sale)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -196,14 +256,22 @@ def confirm_sale(
 )
 def deliver_sale(
     sale_id: int,
+    request: SaleDeliveryRequest | None = None,
     session: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     try:
-        return _service().deliver_sale(
+        sale = _service().deliver_sale(
             session=session,
             current_user=current_user,
             sale_id=sale_id,
+            serial_numbers_by_item=(
+                request.serial_numbers_by_item if request is not None else None
+            ),
+            allow_missing_serial_numbers=(
+                request.allow_missing_serial_numbers if request is not None else True
+            ),
         )
+        return _sale_response(session, sale)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

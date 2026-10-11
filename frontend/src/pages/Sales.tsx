@@ -7,9 +7,11 @@ import {
   deliverSale,
   fetchSale,
   fetchSalePayments,
+  fetchProductAvailability,
   reserveSale,
 } from '../api/salesApi'
 import type {
+  ProductAvailability,
   SalePaymentResponse,
   SaleItemResponse,
   SaleResponse,
@@ -29,16 +31,21 @@ import {
   searchCustomers,
 } from '../api/customerApi'
 import type { Customer } from '../api/customerApi'
-import { fetchInventory } from '../api/inventoryApi'
-import type { InventoryItem } from '../api/inventoryApi'
+import {
+  buildSaleItemPayload,
+  isProductInCart,
+} from './saleItemPayload'
 import {
   fetchProductPromotions,
+  fetchPromotionBenefitGroups,
 } from '../api/promotionApi'
-import type { ProductPromotion } from '../api/promotionApi'
+import type { ProductPromotion, PromotionSaleGroup } from '../api/promotionApi'
 
 export default function Sales() {
   const [stores, setStores] = useState<Store[]>([])
   const [products, setProducts] = useState<ProductListItem[]>([])
+  const [productSearchResults, setProductSearchResults] = useState<ProductListItem[]>([])
+  const [productQuery, setProductQuery] = useState('')
 
   const [storeId, setStoreId] = useState('')
   const [customerId, setCustomerId] = useState('')
@@ -68,15 +75,20 @@ export default function Sales() {
   const [paymentMode, setPaymentMode] = useState('CASH')
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
+  const [deliverySerialInputs, setDeliverySerialInputs] = useState<Record<number, string[]>>({})
+  const [deliverySerialWarning, setDeliverySerialWarning] = useState('')
 
   const [selectedProductPrice, setSelectedProductPrice] = useState<
     ProductPriceResponse | null
   >(null)
   const [selectedProductInventory, setSelectedProductInventory] =
-    useState<InventoryItem | null>(null)
+    useState<ProductAvailability | null>(null)
   const [availablePromotions, setAvailablePromotions] = useState<
     ProductPromotion[]
   >([])
+  const [selectedBenefitGroups, setSelectedBenefitGroups] = useState<PromotionSaleGroup[]>([])
+  const [selectedPromotionBenefitIdsByUnit, setSelectedPromotionBenefitIdsByUnit] = useState<number[][]>([])
+  const [promotionBenefitSourcesByUnit, setPromotionBenefitSourcesByUnit] = useState<Array<Record<number, 'STORE' | 'MANUFACTURER'>>>([])
   const [selectedPromotionId, setSelectedPromotionId] = useState<
     number | null
   >(null)
@@ -101,6 +113,7 @@ export default function Sales() {
   const selectedProduct = products.find(
     (product) => product.id === Number(productId),
   )
+  const selectedProductId = productId ? Number(productId) : null
 
   const productMap = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
@@ -137,16 +150,9 @@ export default function Sales() {
       setError('')
 
       try {
-        const [storeResponse, productResponse] =
-          await Promise.all([
-            fetchAllowedStores(),
-            fetchProducts(),
-          ])
+        const storeResponse = await fetchAllowedStores()
 
         setStores(storeResponse)
-        setProducts(
-          productResponse.items.filter((product) => product.is_active),
-        )
         if (storeResponse.length === 1) {
           setStoreId(String(storeResponse[0].id))
         }
@@ -165,14 +171,56 @@ export default function Sales() {
   }, [])
 
   useEffect(() => {
+    const query = productQuery.trim()
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      if (selectedProductId || query.length < 2) {
+        setProductSearchResults([])
+        return
+      }
+
+      try {
+        const response = await fetchProducts({
+          search: query,
+          excludeCategory: 'Others',
+          pageSize: 20,
+          activeOnly: true,
+        })
+        if (cancelled) return
+        const matches = response.items.filter(
+          (product) => product.category.name.toLowerCase() !== 'others',
+        )
+        setProductSearchResults(matches)
+        setError('')
+      } catch (searchError) {
+        if (!cancelled) {
+          setError(
+            searchError instanceof Error
+              ? searchError.message
+              : 'Unable to search products.',
+          )
+        }
+      }
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [productQuery, selectedProductId])
+
+  useEffect(() => {
     let cancelled = false
 
     async function loadProductContext() {
-      if (!selectedProduct || !storeId) {
+      if (!selectedProductId || !storeId) {
         setSelectedProductPrice(null)
         setSelectedProductInventory(null)
         setAvailablePromotions([])
         setSelectedPromotionId(null)
+        setSelectedBenefitGroups([])
+        setSelectedPromotionBenefitIdsByUnit([])
+        setPromotionBenefitSourcesByUnit([])
         setActualPriceInput('')
         setMinimumPriceOverride(false)
         setIsFreeProduct(false)
@@ -182,21 +230,22 @@ export default function Sales() {
       try {
         const [priceResponse, inventoryResponse, promotionResponse] =
           await Promise.all([
-            fetchCurrentProductPrice(selectedProduct.id),
-            fetchInventory(selectedProduct.id, Number(storeId)),
-            fetchProductPromotions(selectedProduct.id),
+            fetchCurrentProductPrice(selectedProductId),
+            fetchProductAvailability(selectedProductId, Number(storeId)),
+            fetchProductPromotions(selectedProductId),
           ])
 
         if (cancelled) {
           return
         }
 
-        const matchingInventory = inventoryResponse.items[0] ?? null
-
         setSelectedProductPrice(priceResponse)
-        setSelectedProductInventory(matchingInventory)
+        setSelectedProductInventory(inventoryResponse)
         setAvailablePromotions(promotionResponse)
         setSelectedPromotionId(null)
+        setSelectedBenefitGroups([])
+        setSelectedPromotionBenefitIdsByUnit([])
+        setPromotionBenefitSourcesByUnit([])
         setActualPriceInput(
           priceResponse ? String(priceResponse.sale_price) : '0',
         )
@@ -218,7 +267,7 @@ export default function Sales() {
     return () => {
       cancelled = true
     }
-  }, [selectedProduct, selectedStore, storeId])
+  }, [selectedProductId, storeId])
 
   async function handleCustomerSearch() {
     const query = customerQuery.trim()
@@ -238,6 +287,81 @@ export default function Sales() {
           : 'Unable to search customers.',
       )
     }
+  }
+
+  async function handlePromotionChange(value: string) {
+    const promotionId = value ? Number(value) : null
+    setSelectedPromotionId(promotionId)
+    setSelectedBenefitGroups([])
+    setSelectedPromotionBenefitIdsByUnit([])
+    setPromotionBenefitSourcesByUnit([])
+    setError('')
+    if (promotionId === null) return
+
+    try {
+      const groups = await fetchPromotionBenefitGroups(promotionId)
+      setSelectedBenefitGroups(groups)
+      const defaultIds = groups.flatMap((group) =>
+        group.group_requirement === 'REQUIRED' && group.benefit_selection_rule === 'ALL'
+          ? group.benefits.map((benefit) => benefit.id)
+          : [],
+      )
+      setSelectedPromotionBenefitIdsByUnit(
+        Array.from({ length: quantity }, () => [...defaultIds]),
+      )
+    } catch (promotionError) {
+      setSelectedPromotionId(null)
+      setError(
+        promotionError instanceof Error
+          ? promotionError.message
+          : 'Unable to load promotion benefits.',
+      )
+    }
+  }
+
+  function togglePromotionBenefit(
+    unitIndex: number,
+    group: PromotionSaleGroup,
+    benefitId: number,
+    checked: boolean,
+  ) {
+    setSelectedPromotionBenefitIdsByUnit((current) => {
+      const next = [...current]
+      const unitSelections = [...(next[unitIndex] ?? [])]
+      const groupBenefitIds = group.benefits.map((benefit) => benefit.id)
+      const withoutGroup = group.benefit_selection_rule === 'ONE'
+        ? unitSelections.filter((id) => !groupBenefitIds.includes(id))
+        : unitSelections
+      next[unitIndex] = checked
+        ? [...new Set([...withoutGroup, benefitId])]
+        : withoutGroup.filter((id) => id !== benefitId)
+      return next
+    })
+  }
+
+  function setPromotionBenefitSource(
+    unitIndex: number,
+    benefitId: number,
+    source: 'STORE' | 'MANUFACTURER',
+  ) {
+    setPromotionBenefitSourcesByUnit((current) => {
+      const next = [...current]
+      next[unitIndex] = { ...(next[unitIndex] ?? {}), [benefitId]: source }
+      return next
+    })
+  }
+
+  function resizePromotionUnitSelections(nextQuantity: number) {
+    setQuantity(nextQuantity)
+    if (selectedPromotionId === null) return
+    setSelectedPromotionBenefitIdsByUnit((current) => {
+      const defaults = selectedBenefitGroups.flatMap((group) =>
+        group.group_requirement === 'REQUIRED' && group.benefit_selection_rule === 'ALL'
+          ? group.benefits.map((benefit) => benefit.id)
+          : [],
+      )
+      return Array.from({ length: nextQuantity }, (_, index) => current[index] ?? [...defaults])
+    })
   }
 
   async function handleCreateCustomer() {
@@ -288,8 +412,13 @@ export default function Sales() {
     setCustomerSelectionMode('walkin')
     setNewCustomerForm({ name: '', mobile: '', email: '', address: '' })
     setProductId('')
+    setProductQuery('')
+    setProductSearchResults([])
     setQuantity(1)
     setSelectedPromotionId(null)
+    setSelectedBenefitGroups([])
+    setSelectedPromotionBenefitIdsByUnit([])
+    setPromotionBenefitSourcesByUnit([])
     setActualPriceInput('')
     setMinimumPriceOverride(false)
     setIsFreeProduct(false)
@@ -331,10 +460,17 @@ export default function Sales() {
     }
 
     const availableQuantity =
-      selectedProductInventory?.available_quantity ?? 0
+      selectedProductInventory?.current_store.available_quantity ?? 0
     if (quantity > availableQuantity) {
       setError(
         `Available quantity at ${selectedStore?.name ?? 'the selected store'} is ${availableQuantity}. Please reduce the requested quantity.`,
+      )
+      return
+    }
+
+    if (isProductInCart(items, selectedProduct.id)) {
+      setError(
+        `${selectedProduct.name} is already in this sale. Each product is added once, with a benefit chosen for each unit.`,
       )
       return
     }
@@ -355,23 +491,43 @@ export default function Sales() {
         setSale(currentSale)
       }
 
-      await addSaleItem(currentSale.id, {
-        product_id: selectedProduct.id,
-        quantity,
-        actual_unit_price: isFreeProduct ? 0 : actualSalePrice,
-        configured_minimum_price: minimumPrice ?? 0,
-        minimum_price_override: minimumPriceOverride,
-        is_free_product: isFreeProduct,
-        promotion_id: selectedPromotionId,
-      })
+      await addSaleItem(
+        currentSale.id,
+        buildSaleItemPayload({
+          productId: selectedProduct.id,
+          quantity,
+          actualUnitPrice: actualSalePrice,
+          minimumPrice,
+          minimumPriceOverride,
+          isFreeProduct,
+          promotionId: selectedPromotionId,
+          benefitGroups: selectedBenefitGroups,
+          benefitIdsByUnit: selectedPromotionBenefitIdsByUnit,
+          sourcesByUnit: promotionBenefitSourcesByUnit,
+        }),
+      )
 
-      const refreshedSale = await fetchSale(currentSale.id)
-      setSale(refreshedSale)
-      setItems(refreshedSale.items)
+      // The line is saved at this point; a refresh failure must not hide it or report the add as failed.
+      try {
+        const refreshedSale = await fetchSale(currentSale.id)
+        setSale(refreshedSale)
+        setItems(refreshedSale.items)
+      } catch (refreshError) {
+        setError(
+          `The product was added, but the cart could not be refreshed: ${
+            refreshError instanceof Error ? refreshError.message : 'unknown error'
+          }`,
+        )
+      }
 
       setProductId('')
+      setProductQuery('')
+      setProductSearchResults([])
       setQuantity(1)
       setSelectedPromotionId(null)
+      setSelectedBenefitGroups([])
+      setSelectedPromotionBenefitIdsByUnit([])
+      setPromotionBenefitSourcesByUnit([])
       setActualPriceInput('')
       setMinimumPriceOverride(false)
       setIsFreeProduct(false)
@@ -509,7 +665,7 @@ export default function Sales() {
     }
   }
 
-  async function handleDeliverSale() {
+  async function handleDeliverSale(allowMissingSerialNumbers = false) {
     if (!sale || sale.status !== 'CONFIRMED') {
       setError('Only confirmed sales can be delivered.')
       return
@@ -517,12 +673,43 @@ export default function Sales() {
 
     setDelivering(true)
     setError('')
-    setSuccess('')
+    setDeliverySerialWarning('')
+
+    const serializedItems = items.filter((item) => item.requires_serial_number)
+    const missingItems = serializedItems.filter((item) => {
+      const existingCount = item.serial_numbers.length
+      const enteredCount = (deliverySerialInputs[item.id] ?? [])
+        .filter((serial) => serial.trim()).length
+      return existingCount + enteredCount < item.quantity
+    })
+
+    if (missingItems.length > 0 && !allowMissingSerialNumbers) {
+      const warning = `${missingItems.length} serialized sale line(s) are missing one or more serial numbers. Enter the missing values or choose delivery without them.`
+      setDeliverySerialWarning(warning)
+      setDelivering(false)
+      return
+    }
 
     try {
-      const deliveredSale = await deliverSale(sale.id)
+      const serialNumbersByItem = Object.fromEntries(
+        serializedItems.map((item) => [
+          item.id,
+          (deliverySerialInputs[item.id] ?? [])
+            .map((serial) => serial.trim())
+            .filter(Boolean),
+        ]),
+      )
+      const deliveredSale = await deliverSale(sale.id, {
+        serial_numbers_by_item: serialNumbersByItem,
+        allow_missing_serial_numbers: allowMissingSerialNumbers,
+      })
       setSale(deliveredSale)
       setItems(deliveredSale.items)
+      setDeliverySerialWarning(
+        missingItems.length > 0
+          ? 'Sale delivered with missing serial numbers as requested.'
+          : '',
+      )
       setSuccess('Sale marked as delivered.')
     } catch (deliveryError) {
       setError(
@@ -819,36 +1006,65 @@ export default function Sales() {
           </div>
 
           <div className="form-grid">
-            <label>
-              Product
-              <select
-                value={productId}
-                onChange={(event) => setProductId(event.target.value)}
+            <div className="sales-product-search">
+              <label htmlFor="sale-product-search">Product</label>
+              <input
+                id="sale-product-search"
+                type="search"
+                value={productQuery}
+                onChange={(event) => {
+                  setProductId('')
+                  setProductQuery(event.target.value)
+                  setProductSearchResults([])
+                  setError('')
+                }}
+                placeholder="Search name, SKU or brand"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={!productId && productSearchResults.length > 0}
+                aria-controls="sale-product-results"
                 disabled={
                   !storeId ||
                   addingItem ||
                   !isSaleEditable
                 }
-              >
-                <option value="">Select product</option>
-
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} — {product.sku}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+              {!productId && productQuery.trim().length >= 2 && (
+                <div id="sale-product-results" className="sales-product-results" role="listbox">
+                  {productSearchResults.length === 0 ? (
+                    <p>No matching products.</p>
+                  ) : productSearchResults.map((product) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      onClick={() => {
+                        setProductId(String(product.id))
+                        setProductQuery(product.name)
+                        setProductSearchResults([])
+                        setProducts((current) => current.some((item) => item.id === product.id)
+                          ? current
+                          : [...current, product])
+                      }}
+                    >
+                      <strong>{product.name}</strong>
+                      <span>{product.sku} · {product.brand.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <label>
               Quantity
-              <input
+                <input
                 type="number"
                 min="1"
                 step="1"
                 value={quantity}
                 onChange={(event) =>
-                  setQuantity(
+                  resizePromotionUnitSelections(
                     Math.max(1, Number(event.target.value) || 1),
                   )
                 }
@@ -875,10 +1091,13 @@ export default function Sales() {
                   <strong>{selectedStore?.name ?? '—'}</strong>
                 </div>
                 <div>
-                  <span>Available</span>
+                  <span>Available at {selectedStore?.name ?? 'this store'}</span>
                   <strong>
-                    {selectedProductInventory?.available_quantity ?? 0}
+                    {selectedProductInventory?.current_store.available_quantity ?? 0}
                   </strong>
+                  {(selectedProductInventory?.current_store.reserved_quantity ?? 0) > 0 && (
+                    <small>{selectedProductInventory?.current_store.reserved_quantity} reserved</small>
+                  )}
                 </div>
                 <div>
                   <span>Configured Sale Price</span>
@@ -895,6 +1114,25 @@ export default function Sales() {
                   </strong>
                 </div>
               </div>
+
+              {selectedProductInventory && (
+                <div className="sales-other-stock">
+                  <strong>Stock at other locations</strong>
+                  {selectedProductInventory.other_locations.length === 0 ? (
+                    <p>No other authorized store or godown has available stock.</p>
+                  ) : (
+                    <ul>
+                      {selectedProductInventory.other_locations.map((location) => (
+                        <li key={`${location.location_type}-${location.location_name}`}>
+                          {location.location_name} ({location.location_type}): {location.available_quantity} available
+                          {location.reserved_quantity > 0 ? `, ${location.reserved_quantity} reserved` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <small>Stock elsewhere is not sold from this sale; use an inventory transfer to move it here.</small>
+                </div>
+              )}
 
               <div className="form-grid">
                 <label>
@@ -957,24 +1195,88 @@ export default function Sales() {
                   Applicable offer / promotion
                   <select
                     value={selectedPromotionId ?? ''}
-                    onChange={(event) =>
-                      setSelectedPromotionId(
-                        event.target.value ? Number(event.target.value) : null,
-                      )
-                    }
+                    onChange={(event) => void handlePromotionChange(event.target.value)}
                     disabled={addingItem || !isSaleEditable}
                   >
                     <option value="">Select an offer</option>
                     {availablePromotions.map((promotion) => (
                       <option key={promotion.id} value={promotion.id}>
-                          {promotion.name}
-                          {promotion.cashback_amount > 0
-                            ? ` — UPI cashback ₹${Number(promotion.cashback_amount).toLocaleString('en-IN')}`
-                            : ''}
+                        {promotion.name}
+                        {promotion.cashback_amount > 0
+                          ? ` — UPI cashback ₹${Number(promotion.cashback_amount).toLocaleString('en-IN')}`
+                          : ''}
                       </option>
                     ))}
                   </select>
                 </label>
+              )}
+
+              {selectedPromotionId !== null && selectedBenefitGroups.length > 0 && (
+                <div className="sales-promotion-benefits">
+                  <h3>Promotion benefits by unit</h3>
+                  {Array.from({ length: quantity }, (_, unitIndex) => (
+                    <section className="sales-benefit-unit" key={unitIndex}>
+                      <h4>Unit {unitIndex + 1}</h4>
+                      {selectedBenefitGroups.map((group) => {
+                        const mapped = Boolean(group.group_requirement && group.benefit_selection_rule)
+                        const selectedIds = selectedPromotionBenefitIdsByUnit[unitIndex] ?? []
+                        const selectableBenefits = group.benefits.filter(
+                          (benefit) => benefit.benefit_type === 'PRODUCT' || benefit.benefit_type === 'CASHBACK',
+                        )
+                        return (
+                          <fieldset key={group.id} disabled={!mapped || addingItem || !isSaleEditable}>
+                            <legend>{group.name}</legend>
+                            {!mapped ? (
+                              <p>Map this legacy group in Promotion Master before selecting its benefits.</p>
+                            ) : (
+                              <>
+                                <small>{group.group_requirement} group · {group.benefit_selection_rule} benefit selection</small>
+                                {selectableBenefits.map((benefit) => {
+                                  const product = products.find((item) => item.id === benefit.product_id)
+                                  const label = benefit.benefit_type === 'PRODUCT'
+                                    ? `${benefit.product_name ?? product?.name ?? `Product #${benefit.product_id}`} · ₹${Number(benefit.promotion_price ?? 0).toLocaleString('en-IN')}`
+                                    : `UPI cashback · ₹${Number(benefit.cashback_amount ?? 0).toLocaleString('en-IN')}`
+                                  const inputType = group.benefit_selection_rule === 'ONE' ? 'radio' : 'checkbox'
+                                  const selected = selectedIds.includes(benefit.id)
+                                  return (
+                                    <div className="sales-benefit-option" key={benefit.id}>
+                                      <label>
+                                        <input
+                                          type={inputType}
+                                          name={`promotion-group-${group.id}-unit-${unitIndex}`}
+                                          checked={selected}
+                                          onChange={(event) => togglePromotionBenefit(unitIndex, group, benefit.id, event.target.checked)}
+                                          disabled={addingItem || !isSaleEditable}
+                                        />
+                                        <span>{label}</span>
+                                      </label>
+                                      {selected && benefit.benefit_type === 'PRODUCT' && (
+                                        <label>
+                                          Fulfillment
+                                          <select
+                                            value={promotionBenefitSourcesByUnit[unitIndex]?.[benefit.id] ?? 'MANUFACTURER'}
+                                            onChange={(event) => setPromotionBenefitSource(unitIndex, benefit.id, event.target.value as 'STORE' | 'MANUFACTURER')}
+                                            disabled={addingItem || !isSaleEditable}
+                                          >
+                                            <option value="MANUFACTURER">Manufacturer-shipped</option>
+                                            <option value="STORE">Store stock</option>
+                                          </select>
+                                        </label>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                                {group.benefits.some((benefit) => benefit.benefit_type === 'WARRANTY') && (
+                                  <p>Warranty benefits are not currently represented as sale lines.</p>
+                                )}
+                              </>
+                            )}
+                          </fieldset>
+                        )
+                      })}
+                    </section>
+                  ))}
+                </div>
               )}
 
               <div className="form-actions">
@@ -1042,7 +1344,11 @@ export default function Sales() {
 
                     return (
                       <tr key={item.id}>
-                        <td>{product?.name ?? `Product ${item.product_id}`}</td>
+                        <td>
+                          {item.promotion_benefit_name ?? product?.name ?? `Product ${item.product_id}`}
+                          {item.is_promotion_benefit && <small className="sales-benefit-caption">{item.promotion_benefit_source === 'MANUFACTURER' ? 'Manufacturer-shipped' : 'Store-supplied'} promotion benefit</small>}
+                          {item.serial_numbers.length > 0 && <small className="sales-benefit-caption">Serials: {item.serial_numbers.join(', ')}</small>}
+                        </td>
                         <td>{product?.sku ?? '—'}</td>
                         <td>{item.quantity}</td>
                         <td>₹{Number(item.configured_unit_price).toLocaleString('en-IN')}</td>
@@ -1055,7 +1361,7 @@ export default function Sales() {
                         </td>
                         <td>{item.promotion_name ?? '—'}</td>
                         <td>₹{Number(item.line_total).toLocaleString('en-IN')}</td>
-                        <td>{item.is_free_product ? 'FREE' : '—'}</td>
+                        <td>{item.is_free_product ? 'FREE' : item.is_promotion_benefit ? item.discount_amount > 0 ? 'Discounted benefit' : 'Paid benefit' : '—'}</td>
                       </tr>
                     )
                   })}
@@ -1076,8 +1382,13 @@ export default function Sales() {
 
             <div className="summary-grid">
               <div>
-                <span>Subtotal</span>
+                <span>Subtotal (GST inclusive)</span>
                 <strong>₹{Number(sale.subtotal).toLocaleString('en-IN')}</strong>
+              </div>
+
+              <div>
+                <span>Discount</span>
+                <strong>−₹{items.reduce((total, item) => total + Number(item.discount_amount), 0).toLocaleString('en-IN')}</strong>
               </div>
 
               <div>
@@ -1100,16 +1411,52 @@ export default function Sales() {
                 <strong>₹{Number(sale.total_amount).toLocaleString('en-IN')}</strong>
               </div>
 
-              <div>
-                <span>UPI Cashback</span>
-                <strong>−₹{Number(sale.cashback_amount).toLocaleString('en-IN')}</strong>
-              </div>
+              {sale.cashback_amount > 0 && (
+                <div>
+                  <span>UPI Cashback</span>
+                  <strong>−₹{Number(sale.cashback_amount).toLocaleString('en-IN')}</strong>
+                </div>
+              )}
 
               <div>
                 <span>Payable</span>
                 <strong>₹{Number(sale.payable_amount).toLocaleString('en-IN')}</strong>
               </div>
             </div>
+
+            {sale.status === 'CONFIRMED' && items
+              .filter((item) => item.requires_serial_number)
+              .map((item) => {
+                const product = productMap.get(item.product_id)
+                return (
+                  <fieldset className="delivery-serial-group" key={item.id}>
+                    <legend>{product?.name ?? `Product ${item.product_id}`} · {item.quantity} serialized unit(s)</legend>
+                    {Array.from({ length: item.quantity }, (_, unitIndex) => {
+                      const existingSerial = item.serial_numbers[unitIndex]
+                      return existingSerial ? (
+                        <label key={unitIndex}>
+                          Unit {unitIndex + 1}
+                          <input value={existingSerial} readOnly />
+                        </label>
+                      ) : (
+                        <label key={unitIndex}>
+                          Unit {unitIndex + 1} serial number
+                          <input
+                            value={deliverySerialInputs[item.id]?.[unitIndex] ?? ''}
+                            onChange={(event) => setDeliverySerialInputs((current) => {
+                              const values = [...(current[item.id] ?? Array(item.quantity).fill(''))]
+                              values[unitIndex] = event.target.value
+                              return { ...current, [item.id]: values }
+                            })}
+                            disabled={delivering}
+                            placeholder="Enter serial number"
+                          />
+                        </label>
+                      )
+                    })}
+                  </fieldset>
+                )
+              })}
 
             <div className="form-actions">
               {sale.status === 'DRAFT' && (
@@ -1132,6 +1479,17 @@ export default function Sales() {
                 </button>
               )}
             </div>
+            {deliverySerialWarning && (
+              <div className="notice notice--warning" role="status">
+                <strong>Serial number warning</strong>
+                <span>{deliverySerialWarning}</span>
+                {sale.status === 'CONFIRMED' && deliverySerialWarning.includes('missing') && (
+                  <button type="button" onClick={() => void handleDeliverSale(true)} disabled={delivering}>
+                    Deliver without missing serials
+                  </button>
+                )}
+              </div>
+            )}
           </section>
         )}
 

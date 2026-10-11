@@ -13,6 +13,13 @@ export interface SaleItemResponse {
   promotion_id: number | null
   promotion_name: string | null
   promotion_cashback_amount: number
+  promotion_benefit_id: number | null
+  promotion_benefit_name: string | null
+  promotion_source_sale_item_id: number | null
+  is_promotion_benefit: boolean
+  promotion_benefit_source: string | null
+  serial_numbers: string[]
+  requires_serial_number: boolean
   cost_price: number
   gst_rate: number
   gst_amount: number
@@ -53,6 +60,14 @@ export interface AddSaleItemRequest {
   minimum_price_override?: boolean
   is_free_product?: boolean
   promotion_id?: number | null
+  promotion_benefit_ids?: number[]
+  promotion_benefit_ids_by_unit?: number[][]
+  promotion_benefit_sources_by_unit?: Record<number, 'STORE' | 'MANUFACTURER'>[]
+}
+
+export interface SaleDeliveryRequest {
+  serial_numbers_by_item: Record<number, string[]>
+  allow_missing_serial_numbers: boolean
 }
 
 export interface SalePaymentRequest {
@@ -84,6 +99,28 @@ export async function fetchSale(
 ): Promise<SaleResponse> {
   return apiRequest<SaleResponse>(
     `/api/sales/${saleId}`,
+  )
+}
+
+export interface LocationAvailability {
+  location_type: string
+  location_name: string
+  quantity: number
+  reserved_quantity: number
+  available_quantity: number
+}
+
+export interface ProductAvailability {
+  current_store: LocationAvailability
+  other_locations: LocationAvailability[]
+}
+
+export async function fetchProductAvailability(
+  productId: number,
+  storeId: number,
+): Promise<ProductAvailability> {
+  return apiRequest<ProductAvailability>(
+    `/api/sales/availability/${productId}?store_id=${storeId}`,
   )
 }
 
@@ -145,11 +182,13 @@ export async function confirmSale(
 
 export async function deliverSale(
   saleId: number,
+  request?: SaleDeliveryRequest,
 ): Promise<SaleResponse> {
   return apiRequest<SaleResponse>(
     `/api/sales/${saleId}/deliver`,
     {
       method: 'POST',
+      body: request ? JSON.stringify(request) : undefined,
     },
   )
 }

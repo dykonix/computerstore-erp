@@ -148,7 +148,7 @@ class ProductService:
                     tenant_id=tenant_id,
                     category_id=request.category_id,
                     brand_id=request.brand_id,
-                    sku=request.sku,
+                    sku=request.sku.strip(),
                     name=request.name,
                     description=request.description,
                     is_active=request.is_active,
@@ -183,7 +183,7 @@ class ProductService:
             validated_values = self._validate_request(session, request)
             product.category_id = request.category_id
             product.brand_id = request.brand_id
-            product.sku = request.sku
+            product.sku = request.sku.strip()
             product.name = request.name
             product.description = request.description
             product.is_active = request.is_active
@@ -213,7 +213,8 @@ class ProductService:
         brand = self.repository.get_brand(session, request.brand_id)
         if brand is None or not brand.is_active:
             raise ProductValidationError("Brand does not exist or is inactive")
-        if not self.repository.category_has_brand(
+        is_others_pair = category.name == "Others" and brand.name == "Others"
+        if not is_others_pair and not self.repository.category_has_brand(
             session, request.category_id, request.brand_id
         ):
             raise ProductValidationError(
@@ -340,11 +341,26 @@ class ProductService:
             )
 
     def list_products(
-        self, session: Session, tenant_id: int, page: int, page_size: int
+        self,
+        session: Session,
+        tenant_id: int,
+        page: int,
+        page_size: int,
+        search_query: str | None = None,
+        exclude_category_name: str | None = None,
+        active_only: bool = False,
     ) -> tuple[list[tuple[Product, str, str]], int]:
-        total = self.repository.count_products(session, tenant_id)
+        total = self.repository.count_filtered_products(
+            session, tenant_id, search_query, exclude_category_name, active_only
+        )
         rows = self.repository.list_products(
-            session, tenant_id, (page - 1) * page_size, page_size
+            session,
+            tenant_id,
+            (page - 1) * page_size,
+            page_size,
+            search_query,
+            exclude_category_name,
+            active_only,
         )
         return rows, total
 
