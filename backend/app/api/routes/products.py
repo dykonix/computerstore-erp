@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant_id
+from app.api.dependencies import get_current_tenant, get_current_user
 from app.database.session import get_db
 from app.schemas.product import (
     AttributeOptionSummary,
@@ -35,7 +35,9 @@ def _service() -> ProductService:
 
 @router.get("/form-data", response_model=ProductFormDataResponse)
 def get_product_form_data(
-    session: Session = Depends(get_db), service: ProductService = Depends(_service)
+    session: Session = Depends(get_db),
+    service: ProductService = Depends(_service),
+    _current_user=Depends(get_current_user),
 ) -> ProductFormDataResponse:
     repository = service.repository
     return ProductFormDataResponse(
@@ -78,7 +80,7 @@ def get_product_form_data(
 def create_product(
     request: ProductCreate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: ProductService = Depends(_service),
 ) -> ProductResponse:
     try:
@@ -97,7 +99,7 @@ def list_products(
     exclude_category: str | None = Query(None, max_length=255),
     active_only: bool = Query(False),
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: ProductService = Depends(_service),
 ) -> ProductListResponse:
     rows, total = service.list_products(
@@ -133,7 +135,7 @@ def update_product(
     product_id: int,
     request: ProductCreate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: ProductService = Depends(_service),
 ) -> ProductResponse:
     try:
@@ -150,7 +152,7 @@ def update_product(
 def get_product(
     product_id: int,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: ProductService = Depends(_service),
 ) -> ProductResponse:
     try:
@@ -164,7 +166,7 @@ def get_product(
 def get_current_product_price(
     product_id: int,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: ProductService = Depends(_service),
 ) -> ProductPriceResponse:
     try:
@@ -183,7 +185,7 @@ def create_product_price(
     product_id: int,
     request: ProductPriceCreate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: ProductService = Depends(_service),
 ) -> ProductPriceResponse:
     try:
@@ -205,7 +207,7 @@ def update_product_price(
     price_id: int,
     request: ProductPriceUpdate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: ProductService = Depends(_service),
 ) -> ProductPriceResponse:
     try:

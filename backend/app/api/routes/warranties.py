@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant_id
+from app.api.dependencies import get_current_tenant
 from app.database.session import get_db
 from app.schemas.warranty import (
     WarrantyOptionCreate,
@@ -31,7 +31,7 @@ def list_warranty_options(
     product_id: int | None = Query(None, ge=1),
     is_active: bool | None = Query(None),
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: WarrantyService = Depends(_service),
 ) -> list[WarrantyOptionResponse]:
     options = service.list_options(
@@ -48,7 +48,7 @@ def list_warranty_options(
 def create_warranty_option(
     request: WarrantyOptionCreate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: WarrantyService = Depends(_service),
 ) -> WarrantyOptionResponse:
     try:
@@ -62,7 +62,7 @@ def create_warranty_option(
 def get_warranty_option(
     option_id: int,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: WarrantyService = Depends(_service),
 ) -> WarrantyOptionResponse:
     try:
@@ -77,7 +77,7 @@ def update_warranty_option(
     option_id: int,
     request: WarrantyOptionUpdate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: WarrantyService = Depends(_service),
 ) -> WarrantyOptionResponse:
     try:
@@ -94,7 +94,7 @@ def set_warranty_option_status(
     option_id: int,
     is_active: bool,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: WarrantyService = Depends(_service),
 ) -> WarrantyOptionResponse:
     try:
@@ -110,7 +110,7 @@ def set_warranty_option_status(
 def list_warranty_prices(
     option_id: int,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: WarrantyService = Depends(_service),
 ) -> list[WarrantyPriceResponse]:
     try:
@@ -129,7 +129,7 @@ def create_warranty_price(
     option_id: int,
     request: WarrantyPriceCreate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: WarrantyService = Depends(_service),
 ) -> WarrantyPriceResponse:
     try:
@@ -144,7 +144,7 @@ def update_warranty_price(
     price_id: int,
     request: WarrantyPriceUpdate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: WarrantyService = Depends(_service),
 ) -> WarrantyPriceResponse:
     try:
