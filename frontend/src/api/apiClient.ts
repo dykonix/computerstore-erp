@@ -1,5 +1,5 @@
 const TOKEN_KEY = 'computerstore_access_token'
-
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 export async function apiRequest<T>(
   path: string,
   options?: RequestInit,
@@ -13,7 +13,7 @@ export async function apiRequest<T>(
     headers.set('Authorization', `Bearer ${accessToken}`)
   }
 
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
   })

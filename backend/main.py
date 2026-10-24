@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+import os
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.products import router as products_router
@@ -13,7 +15,19 @@ from app.api.routes import promotions
 
 
 app = FastAPI(title="ComputerStore ERP API")
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 app.include_router(auth_router, prefix="/api")
 app.include_router(products_router, prefix="/api")
 app.include_router(inventory_router, prefix="/api")
