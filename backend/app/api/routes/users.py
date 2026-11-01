@@ -29,6 +29,7 @@ from app.services.user_service import (
 
 router = APIRouter(prefix="/users", tags=["identity and access management"])
 _users_manage = Depends(require_permission("users.manage"))
+_roles_manage = Depends(require_permission("roles.manage"))
 
 
 def _user_response(session: Session, user: User) -> UserAdminResponse:
@@ -164,13 +165,19 @@ def update_user_status(
     return _user_response(session, user)
 
 
-@router.post("/{user_id}/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[_users_manage])
+@router.post("/{user_id}/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[_roles_manage])
 def assign_user_role(
     user_id: int,
     role_id: int,
+    current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant),
     session: Session = Depends(get_db),
 ) -> Response:
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot change your own role assignments",
+        )
     try:
         AuthorizationService().assign_role(session, tenant_id, user_id, role_id)
     except AuthorizationError as error:
@@ -178,13 +185,19 @@ def assign_user_role(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/{user_id}/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[_users_manage])
+@router.delete("/{user_id}/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[_roles_manage])
 def remove_user_role(
     user_id: int,
     role_id: int,
+    current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant),
     session: Session = Depends(get_db),
 ) -> Response:
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot change your own role assignments",
+        )
     try:
         AuthorizationService().remove_role(session, tenant_id, user_id, role_id)
     except AuthorizationError as error:
