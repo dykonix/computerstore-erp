@@ -118,7 +118,7 @@ export default function Users() {
         mobile: editForm.mobile,
         employee_id: editForm.employee_id,
       })
-      if (currentUser?.id !== editingUser.id) {
+      if (currentUser?.id !== editingUser.id && hasPermission('roles.manage')) {
         const originalRoleIds = new Set(editingUser.role_ids)
         const nextRoleIds = new Set(editForm.role_ids)
         for (const roleId of editForm.role_ids.filter((id) => !originalRoleIds.has(id))) {
@@ -211,7 +211,7 @@ export default function Users() {
               <div className="permission-list">
                 {formData.roles.map((role) => (
                   <label className="permission-checkbox" key={role.id}>
-                    <input type="checkbox" checked={editForm.role_ids.includes(role.id)} disabled={currentUser?.id === editingUser.id} onChange={(event) => setEditForm({
+                    <input type="checkbox" checked={editForm.role_ids.includes(role.id)} disabled={currentUser?.id === editingUser.id || !hasPermission('roles.manage')} onChange={(event) => setEditForm({
                       ...editForm,
                       role_ids: event.target.checked ? [...editForm.role_ids, role.id] : editForm.role_ids.filter((id) => id !== role.id),
                     })} />
@@ -299,7 +299,6 @@ export default function Users() {
             </div>}
             <div className="form-grid__full">
               <span className="field-label">Store access</span>
-              <p className="field-help">Store-scoped permissions use the linked employee's store assignments. Selecting stores here sets that employee's assigned stores. Existing assignments are preselected.</p>
               <p className="field-help">Select stores here. To save non-empty assignments, link an employee first. Checkboxes remain available regardless of employee selection.</p>
               <div className="permission-list">
                 {formData.stores.map((store) => (
@@ -321,7 +320,6 @@ export default function Users() {
             </div>
             <div className="form-grid__full">
               <span className="field-label">Godown access</span>
-              <p className="field-help">Inventory location permissions can be limited to the godowns assigned to this employee. Selecting godowns here updates the employee's godown assignments.</p>
               <p className="field-help">Select godowns here. To save non-empty assignments, link an employee first. Checkboxes remain available regardless of employee selection.</p>
               <div className="permission-list">
                 {formData.godowns.map((godown) => (
