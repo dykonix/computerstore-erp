@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
@@ -14,6 +14,23 @@ from app.models.user_role import UserRole
 class AuthorizationRepository:
     def get_user(self, session: Session, user_id: int) -> User | None:
         return session.get(User, user_id)
+
+    def count_active_super_admins(self, session: Session, tenant_id: int) -> int:
+        count = session.scalar(
+            select(func.count(func.distinct(User.id)))
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .join(RolePermission, RolePermission.role_id == Role.id)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(
+                User.tenant_id == tenant_id,
+                User.is_active.is_(True),
+                Role.tenant_id == tenant_id,
+                Role.is_active.is_(True),
+                Permission.code == "ALL",
+            )
+        )
+        return int(count or 0)
 
     def get_role(
         self,
