@@ -1,0 +1,32 @@
+name: Backend tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, fix/tenant-isolation]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: sqlite:///./test.db
+      JWT_SECRET_KEY: test-only-secret-that-is-not-used-outside-tests-987654321
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt
+      - name: Run backend tests
+        run: python -m unittest discover -s tests -v
