@@ -150,7 +150,7 @@ function MainContent() {
               ) : path === '/sales' ? (
                 <Sales />
               ) : path === '/users' ? (
-                <Users />
+                hasPermission('users.manage') ? <Users /> : <Navigate to="/dashboard" replace />
               ) : item.permission ? (
                 restrictedElement(item.permission, label)
               ) : (
