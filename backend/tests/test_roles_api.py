@@ -229,6 +229,13 @@ class RoleManagementApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_role_manager_cannot_edit_system_administrator_identity(self):
+        response = self.client(token=self.manager_token).patch(
+            f"/api/users/{self.admin_id}",
+            json={"email": "changed-admin@example.com"},
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_role_manager_cannot_deactivate_system_administrator(self):
         response = self.client(token=self.manager_token).patch(
             f"/api/users/{self.admin_id}/status",
