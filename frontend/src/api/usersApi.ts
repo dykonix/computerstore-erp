@@ -41,7 +41,7 @@ export interface UserCreateRequest {
   mobile: string
   employee_id: number | null
   role_ids: number[]
-  store_ids: number[]
+  store_ids: number[] | null
   initial_password: string
 }
 
