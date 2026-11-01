@@ -31,13 +31,24 @@ def _row_response(row) -> InventoryResponse:
 
 
 @router.get("/form-data", response_model=InventoryFormDataResponse)
-def inventory_form_data(session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant)) -> InventoryFormDataResponse:
+def inventory_form_data(session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), _permission=_inventory_view) -> InventoryFormDataResponse:
     repository = InventoryRepository()
-    return InventoryFormDataResponse(products=[{"id": item.id, "name": item.name, "sku": item.sku} for item in repository.list_products(session, tenant_id)], stores=[{"id": item.id, "name": item.name} for item in repository.list_stores(session, tenant_id)], godowns=[{"id": item.id, "name": item.name} for item in repository.list_godowns(session, tenant_id)])
+    authorization = AuthorizationService()
+    try:
+        stores = authorization.list_allowed_stores(auth_session, current_user, "inventory.view")
+        godowns = authorization.list_allowed_godowns(auth_session, current_user, "inventory.view")
+    except PermissionDeniedError as error:
+        raise HTTPException(status_code=403, detail="Permission denied") from error
+    return InventoryFormDataResponse(
+        products=[{"id": item.id, "name": item.name, "sku": item.sku} for item in repository.list_products(session, tenant_id)],
+        stores=[{"id": item.id, "name": item.name} for item in stores],
+        godowns=[{"id": item.id, "name": item.name} for item in godowns],
+    )
 
 
 @router.post("/opening", response_model=InventoryResponse, status_code=status.HTTP_201_CREATED)
-def create_opening_stock(request: OpeningStockCreate, session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service)) -> InventoryResponse:
+def create_opening_stock(request: OpeningStockCreate, session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service), _permission=_inventory_manage) -> InventoryResponse:
+    _require_location_access(auth_session, current_user, "inventory.manage", store_id=request.store_id, godown_id=request.godown_id)
     try:
         inventory = service.create_opening_stock(session, tenant_id, request)
         return _row_response(service.get_inventory(session, tenant_id, inventory.id))
@@ -46,7 +57,9 @@ def create_opening_stock(request: OpeningStockCreate, session: Session = Depends
 
 
 @router.post("/transfer", response_model=InventoryResponse, status_code=status.HTTP_201_CREATED)
-def transfer_inventory(request: InventoryTransferCreate, session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service)) -> InventoryResponse:
+def transfer_inventory(request: InventoryTransferCreate, session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service), _permission=_inventory_manage) -> InventoryResponse:
+    _require_location_access(auth_session, current_user, "inventory.manage", store_id=request.source_store_id, godown_id=request.source_godown_id)
+    _require_location_access(auth_session, current_user, "inventory.manage", store_id=request.destination_store_id, godown_id=request.destination_godown_id)
     try:
         destination = service.transfer_inventory(session, tenant_id, request)
         return _row_response(service.get_inventory(session, tenant_id, destination.id))
