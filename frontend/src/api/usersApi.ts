@@ -23,9 +23,16 @@ export interface RoleOption {
   name: string
 }
 
+export interface StoreOption {
+  id: number
+  name: string
+  employee_ids: number[]
+}
+
 export interface UserFormData {
   employees: EmployeeOption[]
   roles: RoleOption[]
+  stores: StoreOption[]
 }
 
 export interface UserCreateRequest {
@@ -34,6 +41,7 @@ export interface UserCreateRequest {
   mobile: string
   employee_id: number | null
   role_ids: number[]
+  store_ids: number[]
   initial_password: string
 }
 
