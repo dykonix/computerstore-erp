@@ -8,6 +8,8 @@ from app.models.user import User
 from app.models.role import Role
 from app.models.user_role import UserRole
 from app.models.employee_store import EmployeeStore
+from app.models.employee_godown import EmployeeGodown
+from app.models.godown import Godown
 from app.models.store import Store
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
@@ -101,6 +103,24 @@ class UserIdentityService:
                         raise UserIdentityError(
                             "One or more selected stores are inactive or outside the current tenant"
                         )
+                godown_ids = list(dict.fromkeys(request.godown_ids or []))
+                if request.godown_ids is not None and len(godown_ids) != len(request.godown_ids):
+                    raise UserIdentityError("Each godown can be selected only once")
+                if request.godown_ids is not None and godown_ids and request.employee_id is None:
+                    raise UserIdentityError("Link an employee before assigning godown access")
+                godowns = []
+                if godown_ids:
+                    godowns = list(session.scalars(
+                        select(Godown).where(
+                            Godown.tenant_id == tenant_id,
+                            Godown.id.in_(godown_ids),
+                            Godown.is_active.is_(True),
+                        )
+                    ))
+                    if len(godowns) != len(godown_ids):
+                        raise UserIdentityError(
+                            "One or more selected godowns are inactive or outside the current tenant"
+                        )
                 roles = []
                 if role_ids:
                     roles = list(
@@ -130,19 +150,21 @@ class UserIdentityService:
                 session.flush()
                 for role in roles:
                     session.add(UserRole(user_id=user.id, role_id=role.id))
-                if request.employee_id is not None and request.store_ids is not None:
+                if request.employee_id is not None and (request.store_ids is not None or request.godown_ids is not None):
                     session.execute(
                         delete(EmployeeStore).where(
                             EmployeeStore.employee_id == request.employee_id
                         )
                     )
-                    for store in stores:
-                        session.add(
-                            EmployeeStore(
-                                employee_id=request.employee_id,
-                                store_id=store.id,
-                            )
-                        )
+                    if request.store_ids is not None:
+                        for store in stores:
+                            session.add(EmployeeStore(employee_id=request.employee_id, store_id=store.id))
+                    if request.godown_ids is not None:
+                        session.execute(delete(EmployeeGodown).where(
+                            EmployeeGodown.employee_id == request.employee_id
+                        ))
+                        for godown in godowns:
+                            session.add(EmployeeGodown(employee_id=request.employee_id, godown_id=godown.id))
                 session.flush()
                 return user
         except IntegrityError as error:
