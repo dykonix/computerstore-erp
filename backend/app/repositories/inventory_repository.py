@@ -198,8 +198,16 @@ class InventoryRepository:
         tenant_id: int,
         product_id: int | None = None,
         store_id: int | None = None,
+        allowed_store_ids: list[int] | None = None,
+        allowed_godown_ids: list[int] | None = None,
     ) -> int:
         filters = [Inventory.tenant_id == tenant_id]
+        if allowed_store_ids is not None or allowed_godown_ids is not None:
+            from sqlalchemy import or_
+            filters.append(or_(
+                Inventory.store_id.in_(allowed_store_ids or [-1]),
+                Inventory.godown_id.in_(allowed_godown_ids or [-1]),
+            ))
         if product_id is not None:
             filters.append(Inventory.product_id == product_id)
         if store_id is not None:
@@ -222,6 +230,8 @@ class InventoryRepository:
         limit: int,
         product_id: int | None = None,
         store_id: int | None = None,
+        allowed_store_ids: list[int] | None = None,
+        allowed_godown_ids: list[int] | None = None,
     ):
         location_name = func.coalesce(Store.name, Godown.name)
         location_type = case(
@@ -230,6 +240,12 @@ class InventoryRepository:
         )
 
         filters = [Inventory.tenant_id == tenant_id]
+        if allowed_store_ids is not None or allowed_godown_ids is not None:
+            from sqlalchemy import or_
+            filters.append(or_(
+                Inventory.store_id.in_(allowed_store_ids or [-1]),
+                Inventory.godown_id.in_(allowed_godown_ids or [-1]),
+            ))
         if product_id is not None:
             filters.append(Inventory.product_id == product_id)
         if store_id is not None:
