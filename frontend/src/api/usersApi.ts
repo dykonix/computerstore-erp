@@ -29,10 +29,17 @@ export interface StoreOption {
   employee_ids: number[]
 }
 
+export interface GodownOption {
+  id: number
+  name: string
+  employee_ids: number[]
+}
+
 export interface UserFormData {
   employees: EmployeeOption[]
   roles: RoleOption[]
   stores: StoreOption[]
+  godowns: GodownOption[]
 }
 
 export interface UserCreateRequest {
@@ -42,6 +49,7 @@ export interface UserCreateRequest {
   employee_id: number | null
   role_ids: number[]
   store_ids: number[] | null
+  godown_ids: number[] | null
   initial_password: string
 }
 
