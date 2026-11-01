@@ -14,6 +14,7 @@ import SupplierMaster from './pages/SupplierMaster'
 import CategoryMaster from './pages/CategoryMaster'
 import WarrantyMaster from './pages/WarrantyMaster'
 import PromotionMaster from './pages/PromotionMaster'
+import Users from './pages/Users'
 
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
@@ -148,6 +149,8 @@ function MainContent() {
                 <SupplierMaster />
               ) : path === '/sales' ? (
                 <Sales />
+              ) : path === '/users' ? (
+                <Users />
               ) : item.permission ? (
                 restrictedElement(item.permission, label)
               ) : (
