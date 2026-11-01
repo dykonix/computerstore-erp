@@ -298,8 +298,8 @@ def seed_authorization(session: Session, tenant_id: int) -> None:
     sales_global_role = get_or_create_role(
         session, tenant_id, SALES_GLOBAL_ROLE_NAME
     )
-    all_permission = get_or_create_permission(session, PERMISSION_CODE)
-    sell_permission = get_or_create_permission(session, SELL_PERMISSION_CODE)
+    all_permission = get_or_create_permission(session, PERMISSION_CODE, "Reserved full-access permission for tenant administrators.")
+    sell_permission = get_or_create_permission(session, SELL_PERMISSION_CODE, "Create and manage sales within the permitted store scope.")
     # V1 module permissions. ALL remains reserved for the protected Admin role.
     permission_definitions = {
         "users.manage": "Create and maintain tenant user accounts and role assignments.",
