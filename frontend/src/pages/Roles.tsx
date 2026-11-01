@@ -14,6 +14,7 @@ import type {
 } from '../api/rolesApi'
 
 const emptyRole = { name: '', description: '' }
+const storeScopedPermissions = new Set(['sell', 'inventory.view', 'inventory.manage'])
 type RoleForm = { name: string; description: string; is_active: boolean }
 
 export default function Roles() {
@@ -222,7 +223,7 @@ export default function Roles() {
                     />
                     <span><strong>{permission.code}</strong>{permission.description && <small>{permission.description}</small>}</span>
                   </label>
-                  {checked && permission.code === 'sell' && (
+                  {checked && storeScopedPermissions.has(permission.code) && (
                     <label className="permission-scope">
                       <span>Store scope</span>
                       <select
