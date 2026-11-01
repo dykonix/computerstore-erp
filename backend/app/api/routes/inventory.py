@@ -68,22 +68,34 @@ def transfer_inventory(request: InventoryTransferCreate, session: Session = Depe
 
 
 @router.get("", response_model=InventoryListResponse)
-def list_inventory(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), product_id: int | None = Query(None, gt=0), store_id: int | None = Query(None, gt=0), session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service)) -> InventoryListResponse:
-    rows, total = service.list_inventory(session, tenant_id, page, page_size, product_id, store_id)
+def list_inventory(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), product_id: int | None = Query(None, gt=0), store_id: int | None = Query(None, gt=0), session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service), _permission=_inventory_view) -> InventoryListResponse:
+    authorization = AuthorizationService()
+    try:
+        stores = authorization.list_allowed_stores(auth_session, current_user, "inventory.view")
+        godowns = authorization.list_allowed_godowns(auth_session, current_user, "inventory.view")
+    except PermissionDeniedError as error:
+        raise HTTPException(status_code=403, detail="Permission denied") from error
+    if store_id is not None:
+        _require_location_access(auth_session, current_user, "inventory.view", store_id=store_id)
+    rows, total = service.list_inventory(session, tenant_id, page, page_size, product_id, store_id, [item.id for item in stores], [item.id for item in godowns])
     return InventoryListResponse(items=[_row_response(row) for row in rows], page=page, page_size=page_size, total=total)
 
 
 @router.get("/{inventory_id}", response_model=InventoryResponse)
-def get_inventory(inventory_id: int, session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service)) -> InventoryResponse:
+def get_inventory(inventory_id: int, session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service), _permission=_inventory_view) -> InventoryResponse:
     try:
-        return _row_response(service.get_inventory(session, tenant_id, inventory_id))
+        row = service.get_inventory(session, tenant_id, inventory_id)
+        _require_location_access(auth_session, current_user, "inventory.view", store_id=row[0].store_id, godown_id=row[0].godown_id)
+        return _row_response(row)
     except InventoryNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @router.put("/{inventory_id}", response_model=InventoryResponse)
-def update_inventory_cost_price(inventory_id: int, request: InventoryCostPriceUpdate, session: Session = Depends(get_db), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service)) -> InventoryResponse:
+def update_inventory_cost_price(inventory_id: int, request: InventoryCostPriceUpdate, session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service), _permission=_inventory_manage) -> InventoryResponse:
     try:
+        existing = service.get_inventory(session, tenant_id, inventory_id)
+        _require_location_access(auth_session, current_user, "inventory.manage", store_id=existing[0].store_id, godown_id=existing[0].godown_id)
         service.update_inventory_cost_price(session, tenant_id, inventory_id, request)
         return _row_response(service.get_inventory(session, tenant_id, inventory_id))
     except InventoryNotFoundError as error:
