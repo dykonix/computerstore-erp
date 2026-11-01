@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-PermissionScope = Literal["assigned_stores", "all_tenant_stores"]
+PermissionScope = Literal["assigned_stores", "all_tenant_stores", "assigned_locations", "all_tenant_locations"]
 
 
 class RoleCreate(BaseModel):
