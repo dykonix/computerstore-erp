@@ -9,10 +9,14 @@ from app.repositories.authorization_repository import AuthorizationRepository
 
 ASSIGNED_STORES = "assigned_stores"
 ALL_TENANT_STORES = "all_tenant_stores"
+ASSIGNED_LOCATIONS = "assigned_locations"
+ALL_TENANT_LOCATIONS = "all_tenant_locations"
 ALL_PERMISSION = "ALL"
 SUPPORTED_SCOPES = {
     ASSIGNED_STORES,
     ALL_TENANT_STORES,
+    ASSIGNED_LOCATIONS,
+    ALL_TENANT_LOCATIONS,
 }
 
 
@@ -74,6 +78,7 @@ class AuthorizationService:
         user: User,
         permission_code: str,
         store_id: int | None = None,
+        godown_id: int | None = None,
     ) -> None:
         if not user.is_active:
             raise PermissionDeniedError("User is inactive")
@@ -93,23 +98,19 @@ class AuthorizationService:
         ):
             raise PermissionDeniedError("Permission denied")
 
-        if store_id is not None:
-            self._get_active_employee(
-                session,
-                user,
-            )
+        if store_id is not None and godown_id is not None:
+            raise PermissionDeniedError("Exactly one inventory location must be supplied")
+        if store_id is not None or godown_id is not None:
+            self._get_active_employee(session, user)
 
         if any(
             code == ALL_PERMISSION
             for code, _scope in grants
         ):
             if store_id is not None:
-                self._validate_active_tenant_store(
-                    session,
-                    user.tenant_id,
-                    store_id,
-                )
-
+                self._validate_active_tenant_store(session, user.tenant_id, store_id)
+            if godown_id is not None:
+                self._validate_active_tenant_godown(session, user.tenant_id, godown_id)
             return
 
         matching_scopes = [
@@ -121,32 +122,23 @@ class AuthorizationService:
         if not matching_scopes:
             raise PermissionDeniedError("Permission denied")
 
-        if store_id is None:
+        if store_id is None and godown_id is None:
             return
 
-        self._validate_active_tenant_store(
-            session,
-            user.tenant_id,
-            store_id,
-        )
-
-        if ALL_TENANT_STORES in matching_scopes:
-            return
-
-        if ASSIGNED_STORES not in matching_scopes:
-            raise PermissionDeniedError("Permission denied")
-
-        employee = self._get_active_employee(
-            session,
-            user,
-        )
-
-        if not self.repository.employee_has_store(
-            session,
-            employee.id,
-            store_id,
-        ):
-            raise PermissionDeniedError("Permission denied")
+        employee = self._get_active_employee(session, user)
+        if store_id is not None:
+            self._validate_active_tenant_store(session, user.tenant_id, store_id)
+            if ALL_TENANT_STORES in matching_scopes or ALL_TENANT_LOCATIONS in matching_scopes:
+                return
+            if (ASSIGNED_STORES in matching_scopes or ASSIGNED_LOCATIONS in matching_scopes) and self.repository.employee_has_store(session, employee.id, store_id):
+                return
+        else:
+            self._validate_active_tenant_godown(session, user.tenant_id, godown_id)
+            if ALL_TENANT_LOCATIONS in matching_scopes:
+                return
+            if ASSIGNED_LOCATIONS in matching_scopes and self.repository.employee_has_godown(session, employee.id, godown_id):
+                return
+        raise PermissionDeniedError("Permission denied")
 
     def list_allowed_stores(
         self,
@@ -392,6 +384,13 @@ class AuthorizationService:
             raise PermissionDeniedError(
                 "Permission denied"
             )
+
+    def _validate_active_tenant_godown(
+        self, session: Session, tenant_id: int, godown_id: int
+    ) -> None:
+        godown = self.repository.get_godown(session, tenant_id, godown_id)
+        if godown is None or not godown.is_active:
+            raise PermissionDeniedError("Permission denied")
 
     def _get_active_employee(
         self,
