@@ -12,11 +12,13 @@ from app.database.base import Base
 from app.database.session import get_db
 from app.models.employee import Employee
 from app.models.employee_store import EmployeeStore
+from app.models.employee_godown import EmployeeGodown
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.tenant import Tenant
 from app.models.store import Store
+from app.models.godown import Godown
 from app.models.user import User
 from app.models.user_role import UserRole
 from app.security.jwt import create_access_token
@@ -181,7 +183,8 @@ class UserManagementApiTests(unittest.TestCase):
                 permission = Permission(code="sell", description="Create sales")
                 session.add(permission)
             store = Store(tenant_id=self.tenant_id, name="Store A")
-            session.add_all([employee, role, store])
+            godown = Godown(tenant_id=self.tenant_id, name="Godown A")
+            session.add_all([employee, role, store, godown])
             session.flush()
             session.add(
                 RolePermission(
@@ -191,7 +194,7 @@ class UserManagementApiTests(unittest.TestCase):
                 )
             )
             session.commit()
-            employee_id, role_id, store_id = employee.id, role.id, store.id
+            employee_id, role_id, store_id, godown_id = employee.id, role.id, store.id, godown.id
 
         response = self.client().post(
             "/api/users",
@@ -202,6 +205,7 @@ class UserManagementApiTests(unittest.TestCase):
                 "employee_id": employee_id,
                 "role_ids": [role_id],
                 "store_ids": [store_id],
+                "godown_ids": [godown_id],
                 "initial_password": "A-strong-initial-password",
             },
         )
@@ -217,6 +221,12 @@ class UserManagementApiTests(unittest.TestCase):
                 session.get(
                     EmployeeStore,
                     {"employee_id": employee_id, "store_id": store_id},
+                )
+            )
+            self.assertIsNotNone(
+                session.get(
+                    EmployeeGodown,
+                    {"employee_id": employee_id, "godown_id": godown_id},
                 )
             )
 
