@@ -17,6 +17,7 @@ const emptyForm: UserCreateRequest = {
   email: '',
   mobile: '',
   employee_id: null,
+  role_ids: [],
   initial_password: '',
 }
 
@@ -71,7 +72,7 @@ export default function Users() {
       setUsers((current) => [...current, created].sort((a, b) => a.username.localeCompare(b.username)))
       setForm(emptyForm)
       setShowCreate(false)
-      setNotice('User account created. Assign a role below to grant access.')
+      setNotice('User account created with the selected role assignments.')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to create user.')
     } finally {
@@ -171,6 +172,27 @@ export default function Users() {
             <label><span>Email</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
             <label><span>Mobile</span><input required value={form.mobile} onChange={(event) => setForm({ ...form, mobile: event.target.value })} /></label>
             <label><span>Link employee (optional)</span><select value={form.employee_id ?? ''} onChange={(event) => setForm({ ...form, employee_id: event.target.value ? Number(event.target.value) : null })}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
+            <div className="form-grid__full">
+              <span className="field-label">Assign roles (optional)</span>
+              <p className="field-help">Choose one or more roles now, or leave unselected and assign roles later. Administrator access is restricted to system administrators.</p>
+              <div className="permission-list">
+                {formData.roles.map((role) => (
+                  <label className="permission-checkbox" key={role.id}>
+                    <input
+                      type="checkbox"
+                      checked={form.role_ids.includes(role.id)}
+                      onChange={(event) => setForm({
+                        ...form,
+                        role_ids: event.target.checked
+                          ? [...form.role_ids, role.id]
+                          : form.role_ids.filter((id) => id !== role.id),
+                      })}
+                    />
+                    <span><strong>{role.name}</strong></span>
+                  </label>
+                ))}
+              </div>
+            </div>
             <label className="form-grid__full"><span>Initial password (minimum 12 characters)</span><input required minLength={12} type="password" autoComplete="new-password" value={form.initial_password} onChange={(event) => setForm({ ...form, initial_password: event.target.value })} /></label>
           </div>
           <p className="field-help">The initial password is stored as a secure hash. Share it with the user through a separate secure channel.</p>
