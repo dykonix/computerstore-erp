@@ -8,7 +8,7 @@ import {
   removeRole,
   updateUserStatus,
 } from '../api/usersApi'
-import type { RoleOption, UserCreateRequest, UserFormData, UserRecord } from '../api/usersApi'
+import type { UserCreateRequest, UserFormData, UserRecord } from '../api/usersApi'
 
 const emptyForm: UserCreateRequest = {
   username: '',
@@ -102,10 +102,6 @@ export default function Users() {
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to update role assignment.')
     }
-  }
-
-  function availableRole(user: UserRecord): RoleOption[] {
-    return formData.roles.filter((role) => !user.role_ids.includes(role.id))
   }
 
   return (
