@@ -99,3 +99,14 @@ export function removeRole(userId: number, roleId: number): Promise<void> {
     method: 'DELETE',
   })
 }
+
+
+export function updateUserLocations(
+  userId: number,
+  payload: { store_ids: number[]; godown_ids: number[] },
+): Promise<void> {
+  return apiRequest<void>(`/api/users/${userId}/locations`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
