@@ -150,15 +150,18 @@ class UserIdentityService:
                 session.flush()
                 for role in roles:
                     session.add(UserRole(user_id=user.id, role_id=role.id))
-                if request.employee_id is not None and (request.store_ids is not None or request.godown_ids is not None):
-                    session.execute(
-                        delete(EmployeeStore).where(
-                            EmployeeStore.employee_id == request.employee_id
-                        )
-                    )
-                    if request.store_ids is not None:
-                        for store in stores:
-                            session.add(EmployeeStore(employee_id=request.employee_id, store_id=store.id))
+                if request.employee_id is not None and request.store_ids is not None:
+                    session.execute(delete(EmployeeStore).where(
+                        EmployeeStore.employee_id == request.employee_id
+                    ))
+                    for store in stores:
+                        session.add(EmployeeStore(employee_id=request.employee_id, store_id=store.id))
+                if request.employee_id is not None and request.godown_ids is not None:
+                    session.execute(delete(EmployeeGodown).where(
+                        EmployeeGodown.employee_id == request.employee_id
+                    ))
+                    for godown in godowns:
+                        session.add(EmployeeGodown(employee_id=request.employee_id, godown_id=godown.id)
                     if request.godown_ids is not None:
                         session.execute(delete(EmployeeGodown).where(
                             EmployeeGodown.employee_id == request.employee_id
