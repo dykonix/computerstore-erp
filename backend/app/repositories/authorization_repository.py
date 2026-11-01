@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.models.employee import Employee
 from app.models.employee_store import EmployeeStore
+from app.models.employee_godown import EmployeeGodown
+from app.models.godown import Godown
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.role_permission import RolePermission
@@ -239,3 +241,33 @@ class AuthorizationRepository:
                 EmployeeStore.store_id == store_id,
             )
         ) is not None
+    def get_godown(self, session: Session, tenant_id: int, godown_id: int) -> Godown | None:
+        return session.scalar(
+            select(Godown).where(
+                Godown.id == godown_id,
+                Godown.tenant_id == tenant_id,
+            )
+        )
+
+    def list_active_tenant_godowns(self, session: Session, tenant_id: int) -> list[Godown]:
+        return list(session.scalars(
+            select(Godown).where(
+                Godown.tenant_id == tenant_id,
+                Godown.is_active.is_(True),
+            ).order_by(Godown.name)
+        ))
+
+    def list_employee_godowns(self, session: Session, tenant_id: int, employee_id: int) -> list[Godown]:
+        return list(session.scalars(
+            select(Godown).join(EmployeeGodown, EmployeeGodown.godown_id == Godown.id).where(
+                Godown.tenant_id == tenant_id,
+                Godown.is_active.is_(True),
+                EmployeeGodown.employee_id == employee_id,
+            ).order_by(Godown.name)
+        ))
+
+    def employee_has_godown(self, session: Session, employee_id: int, godown_id: int) -> bool:
+        return session.scalar(select(EmployeeGodown.employee_id).where(
+            EmployeeGodown.employee_id == employee_id,
+            EmployeeGodown.godown_id == godown_id,
+        )) is not None
