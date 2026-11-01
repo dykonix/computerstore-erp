@@ -153,6 +153,16 @@ def create_user(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only a system administrator can assign the system administrator role",
                 )
+    if request.store_ids is not None:
+        try:
+            AuthorizationService().require_permission(
+                auth_session, current_user, "employees.manage"
+            )
+        except PermissionDeniedError as error:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Store assignment requires employees.manage permission",
+            ) from error
     try:
         user = UserIdentityService().create_user(
             session,
