@@ -10,6 +10,7 @@ from app.api.routes.sales import router as sales_router
 from app.api.routes import stores
 from app.api.routes import customers
 from app.api.routes import promotions
+from app.api.routes import users
 
 
 app = FastAPI(title="ComputerStore ERP API")
@@ -24,6 +25,7 @@ app.include_router(sales_router, prefix="/api")
 app.include_router(stores.router, prefix="/api")
 app.include_router(customers.router, prefix="/api")
 app.include_router(promotions.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 
 
 @app.get("/health")

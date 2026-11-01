@@ -296,6 +296,16 @@ def seed_authorization(session: Session, tenant_id: int) -> None:
     )
     all_permission = get_or_create_permission(session, PERMISSION_CODE)
     sell_permission = get_or_create_permission(session, SELL_PERMISSION_CODE)
+    # Register V1 navigation and IAM permissions. The Admin role's ALL grant
+    # expands to these registered codes in AuthorizationService.
+    for permission_code in (
+        "users.manage",
+        "roles.manage",
+        "employees.manage",
+        "stores.manage",
+        "reports.view",
+    ):
+        get_or_create_permission(session, permission_code)
     session.flush()
 
     set_role_permission_scope(
