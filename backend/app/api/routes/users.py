@@ -20,7 +20,7 @@ from app.schemas.iam import (
 )
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
 from app.security.password import hash_password
-from app.services.authorization_service import AuthorizationError, AuthorizationService
+from app.services.authorization_service import AuthorizationError, AuthorizationService, PermissionDeniedError
 from app.services.user_service import (
     UserIdentityError,
     UserIdentityService,
@@ -105,9 +105,28 @@ def list_users(
 @router.post("", response_model=UserAdminResponse, status_code=status.HTTP_201_CREATED, dependencies=[_users_manage])
 def create_user(
     request: UserAdminCreate,
+    current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
     session: Session = Depends(get_db),
 ) -> UserAdminResponse:
+    if request.role_ids:
+        try:
+            AuthorizationService().require_permission(
+                auth_session, current_user, "roles.manage"
+            )
+        except PermissionDeniedError as error:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Role assignment requires roles.manage permission",
+            ) from error
+        role_repository = RoleRepository()
+        for role_id in set(request.role_ids):
+            if role_repository.role_has_all_permission(auth_session, role_id) and not AuthorizationService().is_super_admin(auth_session, current_user):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only a system administrator can assign the system administrator role",
+                )
     try:
         user = UserIdentityService().create_user(
             session,
@@ -117,6 +136,7 @@ def create_user(
                 email=request.email,
                 mobile=request.mobile,
                 employee_id=request.employee_id,
+                role_ids=request.role_ids,
             ),
             hash_password(request.initial_password),
         )
