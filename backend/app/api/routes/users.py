@@ -8,6 +8,7 @@ from app.models.employee import Employee
 from app.models.role import Role
 from app.models.user import User
 from app.models.user_role import UserRole
+from app.repositories.role_repository import RoleRepository
 from app.schemas.iam import (
     EmployeeOption,
     RoleOption,
@@ -176,8 +177,17 @@ def assign_user_role(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot change your own role assignments",
         )
+    authorization = AuthorizationService()
+    if (
+        not authorization.is_super_admin(session, current_user)
+        and RoleRepository().role_has_all_permission(session, role_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a system administrator can assign the system administrator role",
+        )
     try:
-        AuthorizationService().assign_role(session, tenant_id, user_id, role_id)
+        authorization.assign_role(session, tenant_id, user_id, role_id)
     except AuthorizationError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
