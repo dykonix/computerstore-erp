@@ -8,6 +8,7 @@ from app.models.employee import Employee
 from app.models.role import Role
 from app.models.user import User
 from app.models.user_role import UserRole
+from app.repositories.authorization_repository import AuthorizationRepository
 from app.repositories.role_repository import RoleRepository
 from app.schemas.iam import (
     EmployeeOption,
@@ -146,6 +147,7 @@ def update_user_status(
     request: UserStatusUpdate,
     current_user: User = Depends(get_current_user),
     current_tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
     session: Session = Depends(get_db),
 ) -> UserAdminResponse:
     user = session.scalar(
@@ -157,6 +159,25 @@ def update_user_status(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot deactivate your own account",
+        )
+    authorization = AuthorizationService()
+    target_is_super_admin = authorization.is_super_admin(auth_session, user)
+    actor_is_super_admin = authorization.is_super_admin(auth_session, current_user)
+    if target_is_super_admin and not actor_is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a system administrator can deactivate a system administrator",
+        )
+    if (
+        target_is_super_admin
+        and not request.is_active
+        and AuthorizationRepository().count_active_super_admins(
+            auth_session, current_tenant_id
+        ) <= 1
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The last active system administrator cannot be deactivated",
         )
     user.is_active = request.is_active
     session.commit()
@@ -200,6 +221,7 @@ def remove_user_role(
     role_id: int,
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
     session: Session = Depends(get_db),
 ) -> Response:
     if user_id == current_user.id:
@@ -207,6 +229,31 @@ def remove_user_role(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot change your own role assignments",
         )
+    target_user = AuthorizationRepository().get_user(auth_session, user_id)
+    target_role = RoleRepository().get_role(auth_session, tenant_id, role_id)
+    if target_user is None or target_user.tenant_id != tenant_id or target_role is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User or role not found")
+    role_repository = RoleRepository()
+    if (
+        role_repository.user_has_role(auth_session, user_id, role_id)
+        and role_repository.role_has_all_permission(auth_session, role_id)
+    ):
+        authorization = AuthorizationService()
+        if not authorization.is_super_admin(auth_session, current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only a system administrator can remove the system administrator role",
+            )
+        if (
+            target_user.is_active
+            and AuthorizationRepository().count_active_super_admins(
+                auth_session, tenant_id
+            ) <= 1
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The last active system administrator role cannot be removed",
+            )
     try:
         AuthorizationService().remove_role(session, tenant_id, user_id, role_id)
     except AuthorizationError as error:
