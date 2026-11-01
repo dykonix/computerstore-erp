@@ -95,12 +95,14 @@ class RoleManagementService:
             )
         if any(grant.scope not in SUPPORTED_SCOPES for grant in grants):
             raise RoleManagementError("Unsupported permission scope")
+        store_scoped_permissions = {"sell", "inventory.view", "inventory.manage"}
         if any(
-            grant.permission_code != "sell" and grant.scope == "all_tenant_stores"
+            grant.permission_code not in store_scoped_permissions
+            and grant.scope == "all_tenant_stores"
             for grant in grants
         ):
             raise RoleManagementError(
-                "All-company store scope is supported only for the sell permission"
+                "All-company store scope is supported only for sales and inventory permissions"
             )
 
         with session.begin():
