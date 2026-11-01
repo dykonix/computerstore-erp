@@ -129,9 +129,23 @@ def create_user(
 def update_user(
     user_id: int,
     request: UserIdentityUpdate,
+    current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
     session: Session = Depends(get_db),
 ) -> UserAdminResponse:
+    target_user = AuthorizationRepository().get_user(auth_session, user_id)
+    if target_user is None or target_user.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    authorization = AuthorizationService()
+    if (
+        authorization.is_super_admin(auth_session, target_user)
+        and not authorization.is_super_admin(auth_session, current_user)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a system administrator can edit a system administrator account",
+        )
     try:
         user = UserIdentityService().update_user(session, tenant_id, user_id, request)
         return _user_response(session, user)
@@ -199,6 +213,10 @@ def assign_user_role(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot change your own role assignments",
         )
+    target_user = AuthorizationRepository().get_user(auth_session, user_id)
+    target_role = RoleRepository().get_role(auth_session, tenant_id, role_id)
+    if target_user is None or target_user.tenant_id != tenant_id or target_role is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User or role not found")
     authorization = AuthorizationService()
     if (
         not authorization.is_super_admin(auth_session, current_user)
