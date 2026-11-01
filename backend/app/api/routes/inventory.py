@@ -1,13 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant
+from app.api.dependencies import get_auth_db, get_current_tenant, get_current_user, require_permission
+from app.models.user import User
+from app.services.authorization_service import AuthorizationService, PermissionDeniedError
 from app.database.session import get_db
 from app.repositories.inventory_repository import InventoryRepository
 from app.schemas.inventory import InventoryCostPriceUpdate, InventoryFormDataResponse, InventoryListItem, InventoryListResponse, InventoryLocationSummary, InventoryResponse, InventoryTransferCreate, OpeningStockCreate
 from app.services.inventory_service import InventoryNotFoundError, InventoryService, InventoryValidationError
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
+_inventory_view = Depends(require_permission("inventory.view"))
+_inventory_manage = Depends(require_permission("inventory.manage"))
+
+
+def _require_location_access(session, user, permission, store_id=None, godown_id=None):
+    try:
+        AuthorizationService().require_permission(session, user, permission, store_id=store_id, godown_id=godown_id)
+    except PermissionDeniedError as error:
+        raise HTTPException(status_code=403, detail="Permission denied for this inventory location") from error
 
 
 def _service() -> InventoryService:
