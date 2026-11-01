@@ -170,7 +170,7 @@ class RoleManagementApiTests(unittest.TestCase):
     def test_role_list_is_tenant_scoped(self):
         response = self.client().get("/api/roles")
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual([role["name"] for role in response.json()], ["Admin"])
+        self.assertEqual([role["name"] for role in response.json()], ["Admin", "Role Manager"])
 
     def test_permission_catalog_hides_reserved_all_permission(self):
         response = self.client().get("/api/roles/form-data")
