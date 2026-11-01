@@ -1,4 +1,3 @@
-import os
 from collections.abc import Generator
 
 from fastapi import Depends, HTTPException, status
@@ -25,18 +24,6 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 def get_auth_db() -> Generator[Session, None, None]:
     with Session(engine) as session:
         yield session
-
-
-def get_current_tenant_id() -> int:
-    """Temporary tenant context until authentication supplies the tenant."""
-    value = os.getenv("CURRENT_TENANT_ID", "1")
-    try:
-        return int(value)
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Current tenant context is invalid",
-        ) from error
 
 
 def get_current_user(

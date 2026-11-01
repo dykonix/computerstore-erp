@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant_id
+from app.api.dependencies import get_current_tenant
 from app.database.session import get_db
 from app.schemas.supplier import (
     SupplierCreate,
@@ -26,7 +26,7 @@ def _service() -> SupplierService:
 def create_supplier(
     request: SupplierCreate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: SupplierService = Depends(_service),
 ) -> SupplierResponse:
     try:
@@ -42,7 +42,7 @@ def list_suppliers(
     page_size: int = Query(20, ge=1, le=100),
     is_active: bool | None = Query(None),
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: SupplierService = Depends(_service),
 ) -> SupplierListResponse:
     suppliers, total = service.list_suppliers(
@@ -60,7 +60,7 @@ def list_suppliers(
 def get_supplier(
     supplier_id: int,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: SupplierService = Depends(_service),
 ) -> SupplierResponse:
     try:
@@ -75,7 +75,7 @@ def update_supplier(
     supplier_id: int,
     request: SupplierUpdate,
     session: Session = Depends(get_db),
-    tenant_id: int = Depends(get_current_tenant_id),
+    tenant_id: int = Depends(get_current_tenant),
     service: SupplierService = Depends(_service),
 ) -> SupplierResponse:
     try:
