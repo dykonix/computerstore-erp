@@ -46,6 +46,8 @@ class RoleManagementService:
         updates = request.model_dump(exclude_unset=True)
         if not updates:
             raise RoleManagementError("At least one field must be provided")
+        if "is_active" in updates and updates["is_active"] is None:
+            raise RoleManagementError("Role active status cannot be empty")
         if "name" in updates:
             if updates["name"] is None or not updates["name"].strip():
                 raise RoleManagementError("Role name is required")
