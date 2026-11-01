@@ -18,7 +18,7 @@ const emptyForm: UserCreateRequest = {
   mobile: '',
   employee_id: null,
   role_ids: [],
-  store_ids: [],
+  store_ids: null,
   initial_password: '',
 }
 
@@ -177,12 +177,12 @@ export default function Users() {
               setForm({
                 ...form,
                 employee_id: employeeId,
-                store_ids: employeeId === null ? [] : formData.stores
+                store_ids: employeeId === null || !hasPermission('employees.manage') ? null : formData.stores
                   .filter((store) => store.employee_ids.includes(employeeId))
                   .map((store) => store.id),
               })
             }}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
-            <div className="form-grid__full">
+            {hasPermission('roles.manage') && <div className="form-grid__full">
               <span className="field-label">Assign roles (optional)</span>
               <p className="field-help">Choose one or more roles now, or leave unselected and assign roles later. Administrator access is restricted to system administrators.</p>
               <div className="permission-list">
@@ -202,11 +202,13 @@ export default function Users() {
                   </label>
                 ))}
               </div>
-            </div>
+            </div>}
             <div className="form-grid__full">
               <span className="field-label">Store access</span>
               <p className="field-help">Store-scoped permissions use the linked employee's store assignments. Selecting stores here sets that employee's assigned stores. Existing assignments are preselected.</p>
-              {!form.employee_id ? (
+              {!hasPermission('employees.manage') ? (
+                <p className="field-help">Your account does not have permission to change employee store assignments.</p>
+              ) : !form.employee_id ? (
                 <p className="field-help">Link an employee to configure store access.</p>
               ) : (
                 <div className="permission-list">
@@ -218,8 +220,8 @@ export default function Users() {
                         onChange={(event) => setForm({
                           ...form,
                           store_ids: event.target.checked
-                            ? [...form.store_ids, store.id]
-                            : form.store_ids.filter((id) => id !== store.id),
+                            ? [...(form.store_ids ?? []), store.id]
+                            : (form.store_ids ?? []).filter((id) => id !== store.id),
                         })}
                       />
                       <span><strong>{store.name}</strong></span>
