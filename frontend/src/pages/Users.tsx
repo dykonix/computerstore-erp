@@ -21,7 +21,7 @@ const emptyForm: UserCreateRequest = {
 }
 
 export default function Users() {
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, hasPermission } = useAuth()
   const [users, setUsers] = useState<UserRecord[]>([])
   const [formData, setFormData] = useState<UserFormData>({ employees: [], roles: [] })
   const [form, setForm] = useState<UserCreateRequest>(emptyForm)
@@ -197,10 +197,12 @@ export default function Users() {
                   <td>
                     <div className="role-assignment">
                       {user.role_names.length ? user.role_names.map((roleName) => <span className="role-chip" key={roleName}>{roleName}</span>) : <span className="table-subtext">No roles assigned</span>}
-                      <select aria-label={`Assign or remove role for ${user.username}`} value="" disabled={currentUser?.id === user.id} onChange={(event) => void changeRole(user, event.target.value)}>
-                        <option value="">Manage roles…</option>
-                        {formData.roles.map((role) => <option key={role.id} value={role.id}>{user.role_ids.includes(role.id) ? `Remove: ${role.name}` : `Assign: ${role.name}`}</option>)}
-                      </select>
+                      {hasPermission('roles.manage') && (
+                        <select aria-label={`Assign or remove role for ${user.username}`} value="" disabled={currentUser?.id === user.id} onChange={(event) => void changeRole(user, event.target.value)}>
+                          <option value="">Manage roles…</option>
+                          {formData.roles.map((role) => <option key={role.id} value={role.id}>{user.role_ids.includes(role.id) ? `Remove: ${role.name}` : `Assign: ${role.name}`}</option>)}
+                        </select>
+                      )}
                     </div>
                   </td>
                   <td><span className={user.is_active ? 'status-pill status-pill--active' : 'status-pill'}>{user.is_active ? 'Active' : 'Inactive'}</span></td>
