@@ -17,13 +17,16 @@ const emptyForm: UserCreateRequest = {
   email: '',
   mobile: '',
   employee_id: null,
+  role_ids: [],
+  store_ids: null,
+  godown_ids: null,
   initial_password: '',
 }
 
 export default function Users() {
   const { user: currentUser, hasPermission } = useAuth()
   const [users, setUsers] = useState<UserRecord[]>([])
-  const [formData, setFormData] = useState<UserFormData>({ employees: [], roles: [] })
+  const [formData, setFormData] = useState<UserFormData>({ employees: [], roles: [], stores: [], godowns: [] })
   const [form, setForm] = useState<UserCreateRequest>(emptyForm)
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
@@ -71,7 +74,7 @@ export default function Users() {
       setUsers((current) => [...current, created].sort((a, b) => a.username.localeCompare(b.username)))
       setForm(emptyForm)
       setShowCreate(false)
-      setNotice('User account created. Assign a role below to grant access.')
+      setNotice('User account created with the selected role assignments.')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to create user.')
     } finally {
@@ -170,7 +173,100 @@ export default function Users() {
             <label><span>Username</span><input required maxLength={120} value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></label>
             <label><span>Email</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
             <label><span>Mobile</span><input required value={form.mobile} onChange={(event) => setForm({ ...form, mobile: event.target.value })} /></label>
-            <label><span>Link employee (optional)</span><select value={form.employee_id ?? ''} onChange={(event) => setForm({ ...form, employee_id: event.target.value ? Number(event.target.value) : null })}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
+            <label><span>Link employee (optional)</span><select value={form.employee_id ?? ''} onChange={(event) => {
+              const employeeId = event.target.value ? Number(event.target.value) : null
+              setForm({
+                ...form,
+                employee_id: employeeId,
+                store_ids: employeeId === null || !hasPermission('employees.manage') ? null : formData.stores
+                  .filter((store) => store.employee_ids.includes(employeeId))
+                  .map((store) => store.id),
+                godown_ids: employeeId === null || !hasPermission('employees.manage') ? null : formData.godowns
+                  .filter((godown) => godown.employee_ids.includes(employeeId))
+                  .map((godown) => godown.id),
+              })
+            }}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
+            {hasPermission('roles.manage') && <div className="form-grid__full">
+              <span className="field-label">Assign roles (optional)</span>
+              <p className="field-help">Choose one or more roles now, or leave unselected and assign roles later. Administrator access is restricted to system administrators.</p>
+              <div className="permission-list">
+                {formData.roles.map((role) => (
+                  <label className="permission-checkbox" key={role.id}>
+                    <input
+                      type="checkbox"
+                      checked={form.role_ids.includes(role.id)}
+                      onChange={(event) => setForm({
+                        ...form,
+                        role_ids: event.target.checked
+                          ? [...form.role_ids, role.id]
+                          : form.role_ids.filter((id) => id !== role.id),
+                      })}
+                    />
+                    <span><strong>{role.name}</strong></span>
+                  </label>
+                ))}
+              </div>
+            </div>}
+            <div className="form-grid__full">
+              <span className="field-label">Store access</span>
+              <p className="field-help">Store-scoped permissions use the linked employee's store assignments. Selecting stores here sets that employee's assigned stores. Existing assignments are preselected.</p>
+              {!hasPermission('employees.manage') && (
+                <p className="field-help">Your account does not have permission to change employee store assignments.</p>
+              )}
+              {!form.employee_id && (
+                <p className="field-help">Link an employee to enable store assignment.</p>
+              )}
+              <div className="permission-list">
+                {formData.stores.length === 0 ? (
+                  <p className="field-help">No stores are available.</p>
+                ) : formData.stores.map((store) => (
+                  <label className="permission-checkbox" key={store.id}>
+                    <input
+                      type="checkbox"
+                      disabled={!hasPermission('employees.manage') || !form.employee_id}
+                      checked={(form.store_ids ?? []).includes(store.id)}
+                      onChange={(event) => setForm({
+                        ...form,
+                        store_ids: event.target.checked
+                          ? [...(form.store_ids ?? []), store.id]
+                          : (form.store_ids ?? []).filter((id) => id !== store.id),
+                      })}
+                    />
+                    <span><strong>{store.name}</strong></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="form-grid__full">
+              <span className="field-label">Godown access</span>
+              <p className="field-help">Inventory location permissions can be limited to the godowns assigned to this employee. Selecting godowns here updates the employee's godown assignments.</p>
+              {!hasPermission('employees.manage') && (
+                <p className="field-help">Your account does not have permission to change employee godown assignments.</p>
+              )}
+              {!form.employee_id && (
+                <p className="field-help">Link an employee to enable godown assignment.</p>
+              )}
+              <div className="permission-list">
+                {formData.godowns.length === 0 ? (
+                  <p className="field-help">No godowns are available.</p>
+                ) : formData.godowns.map((godown) => (
+                  <label className="permission-checkbox" key={godown.id}>
+                    <input
+                      type="checkbox"
+                      disabled={!hasPermission('employees.manage') || !form.employee_id}
+                      checked={(form.godown_ids ?? []).includes(godown.id)}
+                      onChange={(event) => setForm({
+                        ...form,
+                        godown_ids: event.target.checked
+                          ? [...(form.godown_ids ?? []), godown.id]
+                          : (form.godown_ids ?? []).filter((id) => id !== godown.id),
+                      })}
+                    />
+                    <span><strong>{godown.name}</strong></span>
+                  </label>
+                ))}
+              </div>
+            </div>
             <label className="form-grid__full"><span>Initial password (minimum 12 characters)</span><input required minLength={12} type="password" autoComplete="new-password" value={form.initial_password} onChange={(event) => setForm({ ...form, initial_password: event.target.value })} /></label>
           </div>
           <p className="field-help">The initial password is stored as a secure hash. Share it with the user through a separate secure channel.</p>

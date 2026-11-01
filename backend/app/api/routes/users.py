@@ -5,6 +5,10 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_tenant, get_current_user, get_auth_db, require_permission
 from app.database.session import get_db
 from app.models.employee import Employee
+from app.models.employee_store import EmployeeStore
+from app.models.employee_godown import EmployeeGodown
+from app.models.godown import Godown
+from app.models.store import Store
 from app.models.role import Role
 from app.models.user import User
 from app.models.user_role import UserRole
@@ -13,6 +17,8 @@ from app.repositories.role_repository import RoleRepository
 from app.schemas.iam import (
     EmployeeOption,
     RoleOption,
+    StoreOption,
+    GodownOption,
     UserAdminCreate,
     UserAdminResponse,
     UserFormDataResponse,
@@ -20,7 +26,7 @@ from app.schemas.iam import (
 )
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
 from app.security.password import hash_password
-from app.services.authorization_service import AuthorizationError, AuthorizationService
+from app.services.authorization_service import AuthorizationError, AuthorizationService, PermissionDeniedError
 from app.services.user_service import (
     UserIdentityError,
     UserIdentityService,
@@ -80,12 +86,46 @@ def get_user_form_data(
         .where(Role.tenant_id == tenant_id, Role.is_active.is_(True))
         .order_by(Role.name)
     )
+    stores = list(
+        session.scalars(
+            select(Store)
+            .where(Store.tenant_id == tenant_id, Store.is_active.is_(True))
+            .order_by(Store.name)
+        )
+    )
+    godowns = list(session.scalars(
+        select(Godown).where(Godown.tenant_id == tenant_id, Godown.is_active.is_(True)).order_by(Godown.name)
+    ))
+    employee_godown_rows = session.execute(
+        select(EmployeeGodown.employee_id, EmployeeGodown.godown_id)
+        .join(Godown, Godown.id == EmployeeGodown.godown_id)
+        .where(Godown.tenant_id == tenant_id, Godown.is_active.is_(True))
+    ).all()
+    employee_ids_by_godown: dict[int, list[int]] = {godown.id: [] for godown in godowns}
+    for employee_id, godown_id in employee_godown_rows:
+        employee_ids_by_godown.setdefault(godown_id, []).append(employee_id)
+    employee_store_rows = session.execute(
+        select(EmployeeStore.employee_id, EmployeeStore.store_id)
+        .join(Store, Store.id == EmployeeStore.store_id)
+        .where(Store.tenant_id == tenant_id, Store.is_active.is_(True))
+    ).all()
+    employee_ids_by_store: dict[int, list[int]] = {store.id: [] for store in stores}
+    for employee_id, store_id in employee_store_rows:
+        employee_ids_by_store.setdefault(store_id, []).append(employee_id)
     return UserFormDataResponse(
         employees=[
             EmployeeOption(id=employee.id, name=employee.name, email=employee.email)
             for employee in employees
         ],
         roles=[RoleOption(id=role.id, name=role.name) for role in roles],
+        stores=[
+            StoreOption(id=store.id, name=store.name, employee_ids=employee_ids_by_store.get(store.id, []))
+            for store in stores
+        ],
+        godowns=[
+            GodownOption(id=godown.id, name=godown.name, employee_ids=employee_ids_by_godown.get(godown.id, []))
+            for godown in godowns
+        ],
     )
 
 
@@ -105,9 +145,38 @@ def list_users(
 @router.post("", response_model=UserAdminResponse, status_code=status.HTTP_201_CREATED, dependencies=[_users_manage])
 def create_user(
     request: UserAdminCreate,
+    current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
     session: Session = Depends(get_db),
 ) -> UserAdminResponse:
+    if request.role_ids:
+        try:
+            AuthorizationService().require_permission(
+                auth_session, current_user, "roles.manage"
+            )
+        except PermissionDeniedError as error:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Role assignment requires roles.manage permission",
+            ) from error
+        role_repository = RoleRepository()
+        for role_id in set(request.role_ids):
+            if role_repository.role_has_all_permission(auth_session, role_id) and not AuthorizationService().is_super_admin(auth_session, current_user):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only a system administrator can assign the system administrator role",
+                )
+    if request.store_ids is not None or request.godown_ids is not None:
+        try:
+            AuthorizationService().require_permission(
+                auth_session, current_user, "employees.manage"
+            )
+        except PermissionDeniedError as error:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Store assignment requires employees.manage permission",
+            ) from error
     try:
         user = UserIdentityService().create_user(
             session,
@@ -117,6 +186,9 @@ def create_user(
                 email=request.email,
                 mobile=request.mobile,
                 employee_id=request.employee_id,
+                role_ids=request.role_ids,
+                store_ids=request.store_ids,
+                godown_ids=request.godown_ids,
             ),
             hash_password(request.initial_password),
         )

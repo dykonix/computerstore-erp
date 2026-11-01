@@ -1,6 +1,6 @@
 import { apiRequest } from './apiClient'
 
-export type PermissionScope = 'assigned_stores' | 'all_tenant_stores'
+export type PermissionScope = 'assigned_stores' | 'all_tenant_stores' | 'assigned_locations' | 'all_tenant_locations'
 
 export interface RolePermissionGrant {
   permission_code: string

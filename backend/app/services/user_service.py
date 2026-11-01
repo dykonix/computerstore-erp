@@ -1,9 +1,16 @@
 import re
 
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.models.role import Role
+from app.models.user_role import UserRole
+from app.models.employee_store import EmployeeStore
+from app.models.employee_godown import EmployeeGodown
+from app.models.godown import Godown
+from app.models.store import Store
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
 
@@ -71,7 +78,65 @@ class UserIdentityService:
                 self._validate_identity(
                     session, tenant_id, email, mobile, request.employee_id
                 )
-                return self.repository.add_user(
+                role_ids = list(dict.fromkeys(request.role_ids))
+                if len(role_ids) != len(request.role_ids):
+                    raise UserIdentityError("Each role can be selected only once")
+                store_ids = list(dict.fromkeys(request.store_ids or []))
+                if request.store_ids is not None and len(store_ids) != len(request.store_ids):
+                    raise UserIdentityError("Each store can be selected only once")
+                if request.store_ids is not None and store_ids and request.employee_id is None:
+                    raise UserIdentityError(
+                        "Link an employee before assigning store access"
+                    )
+                stores = []
+                if store_ids:
+                    stores = list(
+                        session.scalars(
+                            select(Store).where(
+                                Store.tenant_id == tenant_id,
+                                Store.id.in_(store_ids),
+                                Store.is_active.is_(True),
+                            )
+                        )
+                    )
+                    if len(stores) != len(store_ids):
+                        raise UserIdentityError(
+                            "One or more selected stores are inactive or outside the current tenant"
+                        )
+                godown_ids = list(dict.fromkeys(request.godown_ids or []))
+                if request.godown_ids is not None and len(godown_ids) != len(request.godown_ids):
+                    raise UserIdentityError("Each godown can be selected only once")
+                if request.godown_ids is not None and godown_ids and request.employee_id is None:
+                    raise UserIdentityError("Link an employee before assigning godown access")
+                godowns = []
+                if godown_ids:
+                    godowns = list(session.scalars(
+                        select(Godown).where(
+                            Godown.tenant_id == tenant_id,
+                            Godown.id.in_(godown_ids),
+                            Godown.is_active.is_(True),
+                        )
+                    ))
+                    if len(godowns) != len(godown_ids):
+                        raise UserIdentityError(
+                            "One or more selected godowns are inactive or outside the current tenant"
+                        )
+                roles = []
+                if role_ids:
+                    roles = list(
+                        session.scalars(
+                            select(Role).where(
+                                Role.tenant_id == tenant_id,
+                                Role.id.in_(role_ids),
+                                Role.is_active.is_(True),
+                            )
+                        )
+                    )
+                    if len(roles) != len(role_ids):
+                        raise UserIdentityError(
+                            "One or more selected roles are inactive or outside the current tenant"
+                        )
+                user = self.repository.add_user(
                     session,
                     User(
                         tenant_id=tenant_id,
@@ -82,6 +147,37 @@ class UserIdentityService:
                         employee_id=request.employee_id,
                     ),
                 )
+                session.flush()
+                for role in roles:
+                    session.add(UserRole(user_id=user.id, role_id=role.id))
+                if request.employee_id is not None and request.store_ids is not None:
+                    session.execute(
+                        delete(EmployeeStore).where(
+                            EmployeeStore.employee_id == request.employee_id
+                        )
+                    )
+                    for store in stores:
+                        session.add(
+                            EmployeeStore(
+                                employee_id=request.employee_id,
+                                store_id=store.id,
+                            )
+                        )
+                if request.employee_id is not None and request.godown_ids is not None:
+                    session.execute(
+                        delete(EmployeeGodown).where(
+                            EmployeeGodown.employee_id == request.employee_id
+                        )
+                    )
+                    for godown in godowns:
+                        session.add(
+                            EmployeeGodown(
+                                employee_id=request.employee_id,
+                                godown_id=godown.id,
+                            )
+                        )
+                session.flush()
+                return user
         except IntegrityError as error:
             raise UserIdentityError(
                 "Email, mobile, or employee is already assigned to a user"
