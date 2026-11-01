@@ -202,6 +202,22 @@ class RoleManagementApiTests(unittest.TestCase):
         self.assertEqual(response.json()["permissions"][0]["permission_code"], "sell")
         self.assertEqual(response.json()["permissions"][0]["scope"], "all_tenant_stores")
 
+    def test_permission_administration_cannot_be_delegated_to_custom_role(self):
+        created = self.client().post("/api/roles", json={"name": "Delegated admin"})
+        response = self.client().put(
+            f"/api/roles/{created.json()['id']}/permissions",
+            json={"permissions": [{"permission_code": "permissions.manage", "scope": "assigned_stores"}]},
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_non_sales_permission_cannot_receive_all_store_scope(self):
+        created = self.client().post("/api/roles", json={"name": "Store scope test"})
+        response = self.client().put(
+            f"/api/roles/{created.json()['id']}/permissions",
+            json={"permissions": [{"permission_code": "users.manage", "scope": "all_tenant_stores"}]},
+        )
+        self.assertEqual(response.status_code, 409)
+
     def test_reserved_all_permission_cannot_be_granted_to_custom_role(self):
         created = self.client().post("/api/roles", json={"name": "Custom"})
         response = self.client().put(
