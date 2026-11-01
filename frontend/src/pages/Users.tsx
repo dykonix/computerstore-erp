@@ -6,6 +6,7 @@ import {
   getUserFormData,
   listUsers,
   removeRole,
+  updateUser,
   updateUserStatus,
 } from '../api/usersApi'
 import type { UserCreateRequest, UserFormData, UserRecord } from '../api/usersApi'
@@ -26,6 +27,8 @@ export default function Users() {
   const [form, setForm] = useState<UserCreateRequest>(emptyForm)
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
+  const [editForm, setEditForm] = useState<{ email: string; mobile: string; employee_id: number | null }>({ email: '', mobile: '', employee_id: null })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -76,6 +79,32 @@ export default function Users() {
     }
   }
 
+  function startEditing(user: UserRecord) {
+    setEditingUser(user)
+    setEditForm({ email: user.email, mobile: user.mobile, employee_id: user.employee_id })
+    setShowCreate(false)
+    setError('')
+    setNotice('')
+  }
+
+  async function submitEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editingUser) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const updated = await updateUser(editingUser.id, editForm)
+      setUsers((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setEditingUser(null)
+      setNotice('User details updated.')
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to update user details.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function toggleStatus(user: UserRecord) {
     setError('')
     setNotice('')
@@ -121,6 +150,19 @@ export default function Users() {
       {error && <div className="notice notice--error" role="alert">{error}</div>}
       {notice && <div className="notice notice--success" role="status">{notice}</div>}
 
+      {editingUser && (
+        <form className="form-panel user-create-form" onSubmit={submitEdit}>
+          <h2>Edit account: {editingUser.username}</h2>
+          <div className="form-grid">
+            <label><span>Email</span><input required type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} /></label>
+            <label><span>Mobile</span><input required value={editForm.mobile} onChange={(event) => setEditForm({ ...editForm, mobile: event.target.value })} /></label>
+            <label className="form-grid__full"><span>Linked employee</span><select value={editForm.employee_id ?? ''} onChange={(event) => setEditForm({ ...editForm, employee_id: event.target.value ? Number(event.target.value) : null })}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
+          </div>
+          <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+          <button className="secondary-button" type="button" onClick={() => setEditingUser(null)}>Cancel</button>
+        </form>
+      )}
+
       {showCreate && (
         <form className="form-panel user-create-form" onSubmit={submitCreate}>
           <h2>Create user account</h2>
@@ -162,7 +204,7 @@ export default function Users() {
                     </div>
                   </td>
                   <td><span className={user.is_active ? 'status-pill status-pill--active' : 'status-pill'}>{user.is_active ? 'Active' : 'Inactive'}</span></td>
-                  <td><button className="secondary-button" type="button" onClick={() => void toggleStatus(user)}>{user.is_active ? 'Deactivate' : 'Activate'}</button></td>
+                  <td><button className="secondary-button" type="button" onClick={() => startEditing(user)}>Edit</button><button className="secondary-button" type="button" onClick={() => void toggleStatus(user)}>{user.is_active ? 'Deactivate' : 'Activate'}</button></td>
                 </tr>
               ))}
             </tbody>
