@@ -9,7 +9,7 @@ class UserAdminCreate(BaseModel):
     mobile: str
     employee_id: int | None = None
     role_ids: list[int] = Field(default_factory=list, max_length=20)
-    store_ids: list[int] = Field(default_factory=list, max_length=20)
+    store_ids: list[int] | None = Field(default=None, max_length=20)
     initial_password: str = Field(min_length=12, max_length=128)
 
 
