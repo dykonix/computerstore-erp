@@ -8,6 +8,7 @@ class UserIdentityCreate(BaseModel):
     email: str
     mobile: str
     employee_id: int | None = None
+    role_ids: list[int] = Field(default_factory=list, max_length=20)
 
 
 class UserIdentityUpdate(BaseModel):
