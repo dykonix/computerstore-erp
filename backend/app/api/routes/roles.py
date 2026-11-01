@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant, get_current_user, require_permission
+from app.api.dependencies import get_auth_db, get_current_tenant, get_current_user, require_permission
 from app.database.session import get_db
 from app.models.user import User
 from app.repositories.role_repository import RoleRepository
@@ -106,9 +106,10 @@ def replace_role_permissions(
     request: RolePermissionReplaceRequest,
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
     session: Session = Depends(get_db),
 ) -> RoleResponse:
-    if not AuthorizationService().is_super_admin(session, current_user):
+    if not AuthorizationService().is_super_admin(auth_session, current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only a system administrator can change role permissions",
