@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_tenant, get_current_user, get_auth_db, require_permission
 from app.database.session import get_db
 from app.models.employee import Employee
+from app.models.employee_store import EmployeeStore
+from app.models.store import Store
 from app.models.role import Role
 from app.models.user import User
 from app.models.user_role import UserRole
@@ -13,6 +15,7 @@ from app.repositories.role_repository import RoleRepository
 from app.schemas.iam import (
     EmployeeOption,
     RoleOption,
+    StoreOption,
     UserAdminCreate,
     UserAdminResponse,
     UserFormDataResponse,
@@ -80,12 +83,35 @@ def get_user_form_data(
         .where(Role.tenant_id == tenant_id, Role.is_active.is_(True))
         .order_by(Role.name)
     )
+    stores = list(
+        session.scalars(
+            select(Store)
+            .where(Store.tenant_id == tenant_id, Store.is_active.is_(True))
+            .order_by(Store.name)
+        )
+    )
+    employee_store_rows = session.execute(
+        select(EmployeeStore.employee_id, EmployeeStore.store_id)
+        .join(Store, Store.id == EmployeeStore.store_id)
+        .where(Store.tenant_id == tenant_id, Store.is_active.is_(True))
+    ).all()
+    employee_ids_by_store: dict[int, list[int]] = {store.id: [] for store in stores}
+    for employee_id, store_id in employee_store_rows:
+        employee_ids_by_store.setdefault(store_id, []).append(employee_id)
     return UserFormDataResponse(
         employees=[
             EmployeeOption(id=employee.id, name=employee.name, email=employee.email)
             for employee in employees
         ],
         roles=[RoleOption(id=role.id, name=role.name) for role in roles],
+        stores=[
+            StoreOption(
+                id=store.id,
+                name=store.name,
+                employee_ids=employee_ids_by_store.get(store.id, []),
+            )
+            for store in stores
+        ],
     )
 
 
@@ -137,6 +163,7 @@ def create_user(
                 mobile=request.mobile,
                 employee_id=request.employee_id,
                 role_ids=request.role_ids,
+                store_ids=request.store_ids,
             ),
             hash_password(request.initial_password),
         )
