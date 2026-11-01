@@ -33,6 +33,7 @@ export interface UserCreateRequest {
   email: string
   mobile: string
   employee_id: number | null
+  role_ids: number[]
   initial_password: string
 }
 
