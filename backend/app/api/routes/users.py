@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant, get_current_user, require_permission
+from app.api.dependencies import get_current_tenant, get_current_user, get_auth_db, require_permission
 from app.database.session import get_db
 from app.models.employee import Employee
 from app.models.role import Role
@@ -170,6 +170,7 @@ def assign_user_role(
     role_id: int,
     current_user: User = Depends(get_current_user),
     tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
     session: Session = Depends(get_db),
 ) -> Response:
     if user_id == current_user.id:
@@ -179,8 +180,8 @@ def assign_user_role(
         )
     authorization = AuthorizationService()
     if (
-        not authorization.is_super_admin(session, current_user)
-        and RoleRepository().role_has_all_permission(session, role_id)
+        not authorization.is_super_admin(auth_session, current_user)
+        and RoleRepository().role_has_all_permission(auth_session, role_id)
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
