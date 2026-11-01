@@ -79,10 +79,10 @@ class UserIdentityService:
                 role_ids = list(dict.fromkeys(request.role_ids))
                 if len(role_ids) != len(request.role_ids):
                     raise UserIdentityError("Each role can be selected only once")
-                store_ids = list(dict.fromkeys(request.store_ids))
-                if len(store_ids) != len(request.store_ids):
+                store_ids = list(dict.fromkeys(request.store_ids or []))
+                if request.store_ids is not None and len(store_ids) != len(request.store_ids):
                     raise UserIdentityError("Each store can be selected only once")
-                if store_ids and request.employee_id is None:
+                if request.store_ids is not None and store_ids and request.employee_id is None:
                     raise UserIdentityError(
                         "Link an employee before assigning store access"
                     )
@@ -130,7 +130,7 @@ class UserIdentityService:
                 session.flush()
                 for role in roles:
                     session.add(UserRole(user_id=user.id, role_id=role.id))
-                if request.employee_id is not None:
+                if request.employee_id is not None and request.store_ids is not None:
                     session.execute(
                         delete(EmployeeStore).where(
                             EmployeeStore.employee_id == request.employee_id
