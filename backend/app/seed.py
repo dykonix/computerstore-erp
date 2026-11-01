@@ -262,11 +262,15 @@ def get_or_create_role(session: Session, tenant_id: int, name: str) -> Role:
     return role
 
 
-def get_or_create_permission(session: Session, code: str) -> Permission:
+def get_or_create_permission(
+    session: Session, code: str, description: str | None = None
+) -> Permission:
     permission = session.scalar(select(Permission).where(Permission.code == code))
     if permission is None:
-        permission = Permission(code=code)
+        permission = Permission(code=code, description=description)
         session.add(permission)
+    elif description and permission.description != description:
+        permission.description = description
     return permission
 
 
@@ -296,28 +300,52 @@ def seed_authorization(session: Session, tenant_id: int) -> None:
     )
     all_permission = get_or_create_permission(session, PERMISSION_CODE)
     sell_permission = get_or_create_permission(session, SELL_PERMISSION_CODE)
-    # Register V1 navigation and IAM permissions. The Admin role's ALL grant
-    # expands to these registered codes in AuthorizationService.
-    for permission_code in (
-        "users.manage",
-        "roles.manage",
-        "permissions.manage",
-        "employees.manage",
-        "stores.manage",
-        "reports.view",
-    ):
-        get_or_create_permission(session, permission_code)
+    # V1 module permissions. ALL remains reserved for the protected Admin role.
+    permission_definitions = {
+        "users.manage": "Create and maintain tenant user accounts and role assignments.",
+        "roles.manage": "Create and maintain tenant roles.",
+        "permissions.manage": "Configure permissions granted by roles; system-admin only.",
+        "employees.manage": "Manage employee records and employee-store assignments.",
+        "stores.manage": "Manage tenant stores and godowns.",
+        "suppliers.manage": "Manage supplier records.",
+        "brands.manage": "Manage product brands.",
+        "categories.manage": "Manage product categories and attributes.",
+        "products.manage": "Manage product records and pricing.",
+        "inventory.view": "View inventory balances and location stock.",
+        "inventory.manage": "Manage inventory balances and movements.",
+        "customers.manage": "Manage customer records.",
+        "offers.manage": "Manage V1 offers and eligibility.",
+        "reports.view": "View tenant-wide reports.",
+    }
+    permissions = {
+        code: get_or_create_permission(session, code, description)
+        for code, description in permission_definitions.items()
+    }
     session.flush()
 
-    set_role_permission_scope(
-        session, admin_role, all_permission, "assigned_stores"
-    )
-    set_role_permission_scope(
-        session, sales_role, sell_permission, "assigned_stores"
-    )
-    set_role_permission_scope(
-        session, sales_global_role, sell_permission, "all_tenant_stores"
-    )
+    set_role_permission_scope(session, admin_role, all_permission, "assigned_stores")
+    set_role_permission_scope(session, sales_role, sell_permission, "assigned_stores")
+    set_role_permission_scope(session, sales_global_role, sell_permission, "all_tenant_stores")
+
+    # Provide useful default roles while keeping custom role creation available.
+    default_role_grants = {
+        "Inventory Management": ("inventory.view", "inventory.manage"),
+        "Product Management": ("products.manage", "brands.manage", "categories.manage"),
+        "Promotion Management": ("offers.manage",),
+        "Reporting": ("reports.view",),
+        "User Management": ("users.manage",),
+        "Store Management": ("stores.manage",),
+        "Employee Management": ("employees.manage",),
+        "Supplier Management": ("suppliers.manage",),
+        "Customer Management": ("customers.manage",),
+    }
+    for role_name, permission_codes in default_role_grants.items():
+        role = get_or_create_role(session, tenant_id, role_name)
+        session.flush()
+        for permission_code in permission_codes:
+            set_role_permission_scope(
+                session, role, permissions[permission_code], "assigned_stores"
+            )
 
 
 def get_or_create_employee(
