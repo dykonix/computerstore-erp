@@ -70,8 +70,9 @@ class UserManagementApiTests(unittest.TestCase):
                 name="Other Employee",
             )
             permission = Permission(code="users.manage")
+            roles_permission = Permission(code="roles.manage")
             role = Role(tenant_id=tenant.id, name="Admin")
-            session.add_all([employee, other_employee, permission, role])
+            session.add_all([employee, other_employee, permission, roles_permission, role])
             session.flush()
             admin = User(
                 tenant_id=tenant.id,
@@ -99,6 +100,11 @@ class UserManagementApiTests(unittest.TestCase):
                     RolePermission(
                         role_id=role.id,
                         permission_id=permission.id,
+                        scope="all_tenant_stores",
+                    ),
+                    RolePermission(
+                        role_id=role.id,
+                        permission_id=roles_permission.id,
                         scope="all_tenant_stores",
                     ),
                 ]
@@ -155,6 +161,18 @@ class UserManagementApiTests(unittest.TestCase):
     def test_user_list_requires_authentication(self):
         response = TestClient(app).get("/api/users")
         self.assertEqual(response.status_code, 401)
+
+    def test_role_assignment_cannot_target_another_tenant(self):
+        response = self.client().post(
+            f"/api/users/{self.other_user_id}/roles/1",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_admin_cannot_change_own_role_assignments(self):
+        response = self.client().post(
+            f"/api/users/{self.admin_id}/roles/1",
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_admin_cannot_deactivate_own_account(self):
         response = self.client().patch(
