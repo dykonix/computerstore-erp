@@ -234,6 +234,7 @@ class AuthorizationTests(unittest.TestCase):
                 scope=ASSIGNED_LOCATIONS,
             ))
             session.add(EmployeeGodown(employee_id=self.employee_a_id, godown_id=godown_a.id))
+            self.add_role(session, self.user_id, self.assigned_role_id)
             session.flush()
             user = session.get(User, self.user_id)
             service = AuthorizationService()
