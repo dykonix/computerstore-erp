@@ -151,23 +151,31 @@ class UserIdentityService:
                 for role in roles:
                     session.add(UserRole(user_id=user.id, role_id=role.id))
                 if request.employee_id is not None and request.store_ids is not None:
-                    session.execute(delete(EmployeeStore).where(
-                        EmployeeStore.employee_id == request.employee_id
-                    ))
+                    session.execute(
+                        delete(EmployeeStore).where(
+                            EmployeeStore.employee_id == request.employee_id
+                        )
+                    )
                     for store in stores:
-                        session.add(EmployeeStore(employee_id=request.employee_id, store_id=store.id))
+                        session.add(
+                            EmployeeStore(
+                                employee_id=request.employee_id,
+                                store_id=store.id,
+                            )
+                        )
                 if request.employee_id is not None and request.godown_ids is not None:
-                    session.execute(delete(EmployeeGodown).where(
-                        EmployeeGodown.employee_id == request.employee_id
-                    ))
-                    for godown in godowns:
-                        session.add(EmployeeGodown(employee_id=request.employee_id, godown_id=godown.id)
-                    if request.godown_ids is not None:
-                        session.execute(delete(EmployeeGodown).where(
+                    session.execute(
+                        delete(EmployeeGodown).where(
                             EmployeeGodown.employee_id == request.employee_id
-                        ))
-                        for godown in godowns:
-                            session.add(EmployeeGodown(employee_id=request.employee_id, godown_id=godown.id))
+                        )
+                    )
+                    for godown in godowns:
+                        session.add(
+                            EmployeeGodown(
+                                employee_id=request.employee_id,
+                                godown_id=godown.id,
+                            )
+                        )
                 session.flush()
                 return user
         except IntegrityError as error:
