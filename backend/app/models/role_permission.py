@@ -8,7 +8,7 @@ class RolePermission(Base):
     __tablename__ = "role_permissions"
     __table_args__ = (
         CheckConstraint(
-            "scope IN ('assigned_stores', 'all_tenant_stores')",
+            "scope IN ('assigned_stores', 'all_tenant_stores', 'assigned_locations', 'all_tenant_locations')",
             name="ck_role_permissions_scope",
         ),
     )
