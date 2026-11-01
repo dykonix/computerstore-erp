@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant, require_permission
+from app.api.dependencies import get_current_tenant, get_current_user, require_permission
 from app.database.session import get_db
 from app.models.employee import Employee
 from app.models.role import Role
@@ -18,7 +18,7 @@ from app.schemas.iam import (
     UserFormDataResponse,
     UserStatusUpdate,
 )
-from app.schemas.user import UserIdentityUpdate
+from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
 from app.security.password import hash_password
 from app.services.authorization_service import AuthorizationError, AuthorizationService
 from app.services.user_service import (
@@ -111,7 +111,7 @@ def create_user(
         user = UserIdentityService().create_user(
             session,
             tenant_id,
-            UserIdentityUpdate() if False else __import__("app.schemas.user", fromlist=["UserIdentityCreate"]).UserIdentityCreate(
+            UserIdentityCreate(
                 username=request.username,
                 email=request.email,
                 mobile=request.mobile,
@@ -144,6 +144,7 @@ def update_user(
 def update_user_status(
     user_id: int,
     request: UserStatusUpdate,
+    current_user: User = Depends(get_current_user),
     current_tenant_id: int = Depends(get_current_tenant),
     session: Session = Depends(get_db),
 ) -> UserAdminResponse:
@@ -152,10 +153,11 @@ def update_user_status(
     )
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    if user.is_active and not request.is_active:
-        # Prevent an administrator from accidentally disabling their own active account.
-        from app.api.dependencies import get_current_user
-        # The route-level current-user dependency is declared below via the helper endpoint.
+    if user_id == current_user.id and not request.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot deactivate your own account",
+        )
     user.is_active = request.is_active
     session.commit()
     session.refresh(user)
