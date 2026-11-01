@@ -95,15 +95,19 @@ class RoleManagementService:
             )
         if any(grant.scope not in SUPPORTED_SCOPES for grant in grants):
             raise RoleManagementError("Unsupported permission scope")
-        store_scoped_permissions = {"sell", "inventory.view", "inventory.manage"}
-        if any(
-            grant.permission_code not in store_scoped_permissions
-            and grant.scope == "all_tenant_stores"
-            for grant in grants
-        ):
-            raise RoleManagementError(
-                "All-company store scope is supported only for sales and inventory permissions"
+        allowed_scopes_by_permission = {
+            "sell": {"assigned_stores", "all_tenant_stores"},
+            "inventory.view": {"assigned_locations", "all_tenant_locations"},
+            "inventory.manage": {"assigned_locations", "all_tenant_locations"},
+        }
+        for grant in grants:
+            allowed = allowed_scopes_by_permission.get(
+                grant.permission_code, {"assigned_stores"}
             )
+            if grant.scope not in allowed:
+                raise RoleManagementError(
+                    f"Unsupported scope for {grant.permission_code}; allowed: {', '.join(sorted(allowed))}"
+                )
 
         with session.begin():
             role = self.repository.get_role(session, tenant_id, role_id)
