@@ -60,3 +60,10 @@ class UserFormDataResponse(BaseModel):
     roles: list[RoleOption]
     stores: list[StoreOption]
     godowns: list[GodownOption]
+
+
+class UserLocationAssignmentsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    store_ids: list[int] = Field(default_factory=list, max_length=20)
+    godown_ids: list[int] = Field(default_factory=list, max_length=20)

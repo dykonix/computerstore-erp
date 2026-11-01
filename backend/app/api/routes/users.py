@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_tenant, get_current_user, get_auth_db, require_permission
@@ -22,6 +22,7 @@ from app.schemas.iam import (
     UserAdminCreate,
     UserAdminResponse,
     UserFormDataResponse,
+    UserLocationAssignmentsUpdate,
     UserStatusUpdate,
 )
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
@@ -225,6 +226,93 @@ def update_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found") from error
     except UserIdentityError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+
+@router.patch("/{user_id}/locations", status_code=status.HTTP_204_NO_CONTENT)
+def update_user_locations(
+    user_id: int,
+    request: UserLocationAssignmentsUpdate,
+    current_user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
+    session: Session = Depends(get_db),
+) -> Response:
+    try:
+        AuthorizationService().require_permission(
+            auth_session, current_user, "employees.manage"
+        )
+    except PermissionDeniedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Location assignment requires employees.manage permission",
+        ) from error
+
+    user = session.scalar(
+        select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.employee_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Link an employee before assigning stores or godowns",
+        )
+    employee = session.scalar(
+        select(Employee).where(
+            Employee.id == user.employee_id,
+            Employee.tenant_id == tenant_id,
+        )
+    )
+    if employee is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The linked employee does not belong to the current tenant",
+        )
+
+    store_ids = list(dict.fromkeys(request.store_ids))
+    godown_ids = list(dict.fromkeys(request.godown_ids))
+    if len(store_ids) != len(request.store_ids) or len(godown_ids) != len(request.godown_ids):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Duplicate store or godown selections are not allowed",
+        )
+
+    stores = list(session.scalars(
+        select(Store).where(
+            Store.tenant_id == tenant_id,
+            Store.id.in_(store_ids),
+            Store.is_active.is_(True),
+        )
+    )) if store_ids else []
+    if len(stores) != len(store_ids):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="One or more selected stores are inactive or outside the current tenant",
+        )
+
+    godowns = list(session.scalars(
+        select(Godown).where(
+            Godown.tenant_id == tenant_id,
+            Godown.id.in_(godown_ids),
+            Godown.is_active.is_(True),
+        )
+    )) if godown_ids else []
+    if len(godowns) != len(godown_ids):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="One or more selected godowns are inactive or outside the current tenant",
+        )
+
+    session.execute(delete(EmployeeStore).where(EmployeeStore.employee_id == user.employee_id))
+    session.execute(delete(EmployeeGodown).where(EmployeeGodown.employee_id == user.employee_id))
+    session.add_all([
+        EmployeeStore(employee_id=user.employee_id, store_id=store.id) for store in stores
+    ])
+    session.add_all([
+        EmployeeGodown(employee_id=user.employee_id, godown_id=godown.id) for godown in godowns
+    ])
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/{user_id}/status", response_model=UserAdminResponse, dependencies=[_users_manage])
