@@ -183,6 +183,8 @@ class InventoryService:
         page_size: int,
         product_id: int | None = None,
         store_id: int | None = None,
+        allowed_store_ids: list[int] | None = None,
+        allowed_godown_ids: list[int] | None = None,
     ):
         rows = self.repository.list_inventory(
             session,
@@ -191,11 +193,15 @@ class InventoryService:
             page_size,
             product_id,
             store_id,
+            allowed_store_ids,
+            allowed_godown_ids,
         )
         total = self.repository.count_inventory(
             session,
             tenant_id,
             product_id,
             store_id,
+            allowed_store_ids,
+            allowed_godown_ids,
         )
         return rows, total
