@@ -163,7 +163,7 @@ def update_user_status(
     authorization = AuthorizationService()
     target_is_super_admin = authorization.is_super_admin(auth_session, user)
     actor_is_super_admin = authorization.is_super_admin(auth_session, current_user)
-    if target_is_super_admin and not actor_is_super_admin:
+    if target_is_super_admin and not actor_is_super_admin and not request.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only a system administrator can deactivate a system administrator",
