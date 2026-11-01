@@ -6,6 +6,8 @@ from app.api.dependencies import get_current_tenant, get_current_user, get_auth_
 from app.database.session import get_db
 from app.models.employee import Employee
 from app.models.employee_store import EmployeeStore
+from app.models.employee_godown import EmployeeGodown
+from app.models.godown import Godown
 from app.models.store import Store
 from app.models.role import Role
 from app.models.user import User
@@ -16,6 +18,7 @@ from app.schemas.iam import (
     EmployeeOption,
     RoleOption,
     StoreOption,
+    GodownOption,
     UserAdminCreate,
     UserAdminResponse,
     UserFormDataResponse,
@@ -90,6 +93,17 @@ def get_user_form_data(
             .order_by(Store.name)
         )
     )
+    godowns = list(session.scalars(
+        select(Godown).where(Godown.tenant_id == tenant_id, Godown.is_active.is_(True)).order_by(Godown.name)
+    ))
+    employee_godown_rows = session.execute(
+        select(EmployeeGodown.employee_id, EmployeeGodown.godown_id)
+        .join(Godown, Godown.id == EmployeeGodown.godown_id)
+        .where(Godown.tenant_id == tenant_id, Godown.is_active.is_(True))
+    ).all()
+    employee_ids_by_godown: dict[int, list[int]] = {godown.id: [] for godown in godowns}
+    for employee_id, godown_id in employee_godown_rows:
+        employee_ids_by_godown.setdefault(godown_id, []).append(employee_id)
     employee_store_rows = session.execute(
         select(EmployeeStore.employee_id, EmployeeStore.store_id)
         .join(Store, Store.id == EmployeeStore.store_id)
@@ -105,12 +119,12 @@ def get_user_form_data(
         ],
         roles=[RoleOption(id=role.id, name=role.name) for role in roles],
         stores=[
-            StoreOption(
-                id=store.id,
-                name=store.name,
-                employee_ids=employee_ids_by_store.get(store.id, []),
-            )
+            StoreOption(id=store.id, name=store.name, employee_ids=employee_ids_by_store.get(store.id, []))
             for store in stores
+        ],
+        godowns=[
+            GodownOption(id=godown.id, name=godown.name, employee_ids=employee_ids_by_godown.get(godown.id, []))
+            for godown in godowns
         ],
     )
 
@@ -153,7 +167,7 @@ def create_user(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only a system administrator can assign the system administrator role",
                 )
-    if request.store_ids is not None:
+    if request.store_ids is not None or request.godown_ids is not None:
         try:
             AuthorizationService().require_permission(
                 auth_session, current_user, "employees.manage"
@@ -174,6 +188,7 @@ def create_user(
                 employee_id=request.employee_id,
                 role_ids=request.role_ids,
                 store_ids=request.store_ids,
+                godown_ids=request.godown_ids,
             ),
             hash_password(request.initial_password),
         )
