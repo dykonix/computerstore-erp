@@ -70,12 +70,12 @@ def get_user_form_data(
 ) -> UserFormDataResponse:
     employees = session.scalars(
         select(Employee)
-        .where(Employee.tenant_id == tenant_id)
+        .where(Employee.tenant_id == tenant_id, Employee.is_active.is_(True))
         .order_by(Employee.name, Employee.email)
     )
     roles = session.scalars(
         select(Role)
-        .where(Role.tenant_id == tenant_id)
+        .where(Role.tenant_id == tenant_id, Role.is_active.is_(True))
         .order_by(Role.name)
     )
     return UserFormDataResponse(
