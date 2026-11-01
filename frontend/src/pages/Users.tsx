@@ -18,13 +18,14 @@ const emptyForm: UserCreateRequest = {
   mobile: '',
   employee_id: null,
   role_ids: [],
+  store_ids: [],
   initial_password: '',
 }
 
 export default function Users() {
   const { user: currentUser, hasPermission } = useAuth()
   const [users, setUsers] = useState<UserRecord[]>([])
-  const [formData, setFormData] = useState<UserFormData>({ employees: [], roles: [] })
+  const [formData, setFormData] = useState<UserFormData>({ employees: [], roles: [], stores: [] })
   const [form, setForm] = useState<UserCreateRequest>(emptyForm)
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
@@ -171,7 +172,16 @@ export default function Users() {
             <label><span>Username</span><input required maxLength={120} value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></label>
             <label><span>Email</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
             <label><span>Mobile</span><input required value={form.mobile} onChange={(event) => setForm({ ...form, mobile: event.target.value })} /></label>
-            <label><span>Link employee (optional)</span><select value={form.employee_id ?? ''} onChange={(event) => setForm({ ...form, employee_id: event.target.value ? Number(event.target.value) : null })}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
+            <label><span>Link employee (optional)</span><select value={form.employee_id ?? ''} onChange={(event) => {
+              const employeeId = event.target.value ? Number(event.target.value) : null
+              setForm({
+                ...form,
+                employee_id: employeeId,
+                store_ids: employeeId === null ? [] : formData.stores
+                  .filter((store) => store.employee_ids.includes(employeeId))
+                  .map((store) => store.id),
+              })
+            }}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
             <div className="form-grid__full">
               <span className="field-label">Assign roles (optional)</span>
               <p className="field-help">Choose one or more roles now, or leave unselected and assign roles later. Administrator access is restricted to system administrators.</p>
@@ -192,6 +202,31 @@ export default function Users() {
                   </label>
                 ))}
               </div>
+            </div>
+            <div className="form-grid__full">
+              <span className="field-label">Store access</span>
+              <p className="field-help">Store-scoped permissions use the linked employee's store assignments. Selecting stores here sets that employee's assigned stores. Existing assignments are preselected.</p>
+              {!form.employee_id ? (
+                <p className="field-help">Link an employee to configure store access.</p>
+              ) : (
+                <div className="permission-list">
+                  {formData.stores.map((store) => (
+                    <label className="permission-checkbox" key={store.id}>
+                      <input
+                        type="checkbox"
+                        checked={form.store_ids.includes(store.id)}
+                        onChange={(event) => setForm({
+                          ...form,
+                          store_ids: event.target.checked
+                            ? [...form.store_ids, store.id]
+                            : form.store_ids.filter((id) => id !== store.id),
+                        })}
+                      />
+                      <span><strong>{store.name}</strong></span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
             <label className="form-grid__full"><span>Initial password (minimum 12 characters)</span><input required minLength={12} type="password" autoComplete="new-password" value={form.initial_password} onChange={(event) => setForm({ ...form, initial_password: event.target.value })} /></label>
           </div>
