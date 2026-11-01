@@ -343,8 +343,13 @@ def seed_authorization(session: Session, tenant_id: int) -> None:
         role = get_or_create_role(session, tenant_id, role_name)
         session.flush()
         for permission_code in permission_codes:
+            scope = (
+                "assigned_locations"
+                if permission_code in {"inventory.view", "inventory.manage"}
+                else "assigned_stores"
+            )
             set_role_permission_scope(
-                session, role, permissions[permission_code], "assigned_stores"
+                session, role, permissions[permission_code], scope
             )
 
 
