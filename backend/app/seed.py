@@ -189,7 +189,6 @@ ROLE_NAME = "Admin"
 PERMISSION_CODE = "ALL"
 SELL_PERMISSION_CODE = "sell"
 SALES_ROLE_NAME = "Sales"
-SALES_GLOBAL_ROLE_NAME = "Sales Global"
 EMPLOYEE_EMAIL = "dykonix@gmail.com"
 EMPLOYEE_NAME = "Dykonix"
 
@@ -295,9 +294,6 @@ def seed_authorization(session: Session, tenant_id: int) -> None:
     """Seed V1 authorization configuration for one existing tenant."""
     admin_role = get_or_create_role(session, tenant_id, ROLE_NAME)
     sales_role = get_or_create_role(session, tenant_id, SALES_ROLE_NAME)
-    sales_global_role = get_or_create_role(
-        session, tenant_id, SALES_GLOBAL_ROLE_NAME
-    )
     all_permission = get_or_create_permission(session, PERMISSION_CODE, "Reserved full-access permission for tenant administrators.")
     sell_permission = get_or_create_permission(session, SELL_PERMISSION_CODE, "Create and manage sales within the permitted store scope.")
     # V1 module permissions. ALL remains reserved for the protected Admin role.
@@ -325,19 +321,15 @@ def seed_authorization(session: Session, tenant_id: int) -> None:
 
     set_role_permission_scope(session, admin_role, all_permission, "assigned_stores")
     set_role_permission_scope(session, sales_role, sell_permission, "assigned_stores")
-    set_role_permission_scope(session, sales_global_role, sell_permission, "all_tenant_stores")
 
-    # Provide useful default roles while keeping custom role creation available.
+    # V1 has six standard roles: Admin, Sales, Inventory Management,
+    # Product Management, Promotion Management, and Reporting.
+    # Admin remains the protected full-access role; ALL is not granted elsewhere.
     default_role_grants = {
         "Inventory Management": ("inventory.view", "inventory.manage"),
         "Product Management": ("products.manage", "brands.manage", "categories.manage"),
         "Promotion Management": ("offers.manage",),
         "Reporting": ("reports.view",),
-        "User Management": ("users.manage",),
-        "Store Management": ("stores.manage",),
-        "Employee Management": ("employees.manage",),
-        "Supplier Management": ("suppliers.manage",),
-        "Customer Management": ("customers.manage",),
     }
     for role_name, permission_codes in default_role_grants.items():
         role = get_or_create_role(session, tenant_id, role_name)

@@ -210,56 +210,62 @@ export default function Users() {
             <div className="form-grid__full">
               <span className="field-label">Store access</span>
               <p className="field-help">Store-scoped permissions use the linked employee's store assignments. Selecting stores here sets that employee's assigned stores. Existing assignments are preselected.</p>
-              {!hasPermission('employees.manage') ? (
+              {!hasPermission('employees.manage') && (
                 <p className="field-help">Your account does not have permission to change employee store assignments.</p>
-              ) : !form.employee_id ? (
-                <p className="field-help">Link an employee to configure store access.</p>
-              ) : (
-                <div className="permission-list">
-                  {formData.stores.map((store) => (
-                    <label className="permission-checkbox" key={store.id}>
-                      <input
-                        type="checkbox"
-                        checked={(form.store_ids ?? []).includes(store.id)}
-                        onChange={(event) => setForm({
-                          ...form,
-                          store_ids: event.target.checked
-                            ? [...(form.store_ids ?? []), store.id]
-                            : (form.store_ids ?? []).filter((id) => id !== store.id),
-                        })}
-                      />
-                      <span><strong>{store.name}</strong></span>
-                    </label>
-                  ))}
-                </div>
               )}
+              {!form.employee_id && (
+                <p className="field-help">Link an employee to enable store assignment.</p>
+              )}
+              <div className="permission-list">
+                {formData.stores.length === 0 ? (
+                  <p className="field-help">No stores are available.</p>
+                ) : formData.stores.map((store) => (
+                  <label className="permission-checkbox" key={store.id}>
+                    <input
+                      type="checkbox"
+                      disabled={!hasPermission('employees.manage') || !form.employee_id}
+                      checked={(form.store_ids ?? []).includes(store.id)}
+                      onChange={(event) => setForm({
+                        ...form,
+                        store_ids: event.target.checked
+                          ? [...(form.store_ids ?? []), store.id]
+                          : (form.store_ids ?? []).filter((id) => id !== store.id),
+                      })}
+                    />
+                    <span><strong>{store.name}</strong></span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="form-grid__full">
               <span className="field-label">Godown access</span>
               <p className="field-help">Inventory location permissions can be limited to the godowns assigned to this employee. Selecting godowns here updates the employee's godown assignments.</p>
-              {!hasPermission('employees.manage') ? (
+              {!hasPermission('employees.manage') && (
                 <p className="field-help">Your account does not have permission to change employee godown assignments.</p>
-              ) : !form.employee_id ? (
-                <p className="field-help">Link an employee to configure godown access.</p>
-              ) : (
-                <div className="permission-list">
-                  {formData.godowns.map((godown) => (
-                    <label className="permission-checkbox" key={godown.id}>
-                      <input
-                        type="checkbox"
-                        checked={(form.godown_ids ?? []).includes(godown.id)}
-                        onChange={(event) => setForm({
-                          ...form,
-                          godown_ids: event.target.checked
-                            ? [...(form.godown_ids ?? []), godown.id]
-                            : (form.godown_ids ?? []).filter((id) => id !== godown.id),
-                        })}
-                      />
-                      <span><strong>{godown.name}</strong></span>
-                    </label>
-                  ))}
-                </div>
               )}
+              {!form.employee_id && (
+                <p className="field-help">Link an employee to enable godown assignment.</p>
+              )}
+              <div className="permission-list">
+                {formData.godowns.length === 0 ? (
+                  <p className="field-help">No godowns are available.</p>
+                ) : formData.godowns.map((godown) => (
+                  <label className="permission-checkbox" key={godown.id}>
+                    <input
+                      type="checkbox"
+                      disabled={!hasPermission('employees.manage') || !form.employee_id}
+                      checked={(form.godown_ids ?? []).includes(godown.id)}
+                      onChange={(event) => setForm({
+                        ...form,
+                        godown_ids: event.target.checked
+                          ? [...(form.godown_ids ?? []), godown.id]
+                          : (form.godown_ids ?? []).filter((id) => id !== godown.id),
+                      })}
+                    />
+                    <span><strong>{godown.name}</strong></span>
+                  </label>
+                ))}
+              </div>
             </div>
             <label className="form-grid__full"><span>Initial password (minimum 12 characters)</span><input required minLength={12} type="password" autoComplete="new-password" value={form.initial_password} onChange={(event) => setForm({ ...form, initial_password: event.target.value })} /></label>
           </div>
