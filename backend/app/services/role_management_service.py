@@ -89,12 +89,19 @@ class RoleManagementService:
         codes = [grant.permission_code for grant in grants]
         if len(codes) != len(set(codes)):
             raise RoleManagementError("Each permission can be assigned only once")
-        if ALL_PERMISSION in codes:
+        if ALL_PERMISSION in codes or "permissions.manage" in codes:
             raise RoleManagementError(
-                "The system administrator permission cannot be assigned to custom roles"
+                "System administrator permissions cannot be assigned to custom roles"
             )
         if any(grant.scope not in SUPPORTED_SCOPES for grant in grants):
             raise RoleManagementError("Unsupported permission scope")
+        if any(
+            grant.permission_code != "sell" and grant.scope == "all_tenant_stores"
+            for grant in grants
+        ):
+            raise RoleManagementError(
+                "All-company store scope is supported only for the sell permission"
+            )
 
         with session.begin():
             role = self.repository.get_role(session, tenant_id, role_id)
