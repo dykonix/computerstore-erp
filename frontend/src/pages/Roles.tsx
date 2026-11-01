@@ -222,7 +222,7 @@ export default function Roles() {
                     />
                     <span><strong>{permission.code}</strong>{permission.description && <small>{permission.description}</small>}</span>
                   </label>
-                  {checked && (
+                  {checked && permission.code === 'sell' && (
                     <label className="permission-scope">
                       <span>Store scope</span>
                       <select
