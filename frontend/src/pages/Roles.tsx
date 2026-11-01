@@ -14,7 +14,8 @@ import type {
 } from '../api/rolesApi'
 
 const emptyRole = { name: '', description: '' }
-const storeScopedPermissions = new Set(['sell', 'inventory.view', 'inventory.manage'])
+const storeScopedPermissions = new Set(['sell'])
+const locationScopedPermissions = new Set(['inventory.view', 'inventory.manage'])
 type RoleForm = { name: string; description: string; is_active: boolean }
 
 export default function Roles() {
@@ -223,15 +224,20 @@ export default function Roles() {
                     />
                     <span><strong>{permission.code}</strong>{permission.description && <small>{permission.description}</small>}</span>
                   </label>
-                  {checked && storeScopedPermissions.has(permission.code) && (
+                  {checked && (storeScopedPermissions.has(permission.code) || locationScopedPermissions.has(permission.code)) && (
                     <label className="permission-scope">
                       <span>Store scope</span>
                       <select
                         value={grants[permission.code]}
                         onChange={(event) => setGrants((current) => ({ ...current, [permission.code]: event.target.value as PermissionScope }))}
                       >
-                        <option value="assigned_stores">Assigned stores</option>
-                        <option value="all_tenant_stores">All company stores</option>
+                        {locationScopedPermissions.has(permission.code) ? <>
+                          <option value="assigned_locations">Assigned stores and godowns</option>
+                          <option value="all_tenant_locations">All company locations</option>
+                        </> : <>
+                          <option value="assigned_stores">Assigned stores</option>
+                          <option value="all_tenant_stores">All company stores</option>
+                        </>}
                       </select>
                     </label>
                   )}
