@@ -13,6 +13,8 @@ from app.api.routes.auth import get_authenticated_user
 from app.database.base import Base
 from app.models.employee import Employee
 from app.models.employee_store import EmployeeStore
+from app.models.employee_godown import EmployeeGodown
+from app.models.godown import Godown
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.role_permission import RolePermission
@@ -27,6 +29,7 @@ from app.services.authorization_service import (
     ALL_PERMISSION,
     ALL_TENANT_STORES,
     ASSIGNED_STORES,
+    ASSIGNED_LOCATIONS,
     AuthorizationError,
     AuthorizationService,
     PermissionDeniedError,
@@ -216,6 +219,29 @@ class AuthorizationTests(unittest.TestCase):
             self.add_role(session, self.user_id, self.assigned_role_id)
             user = session.get(User, self.user_id)
             service.require_permission(session, user, "sell")
+
+    def test_assigned_location_scope_allows_only_assigned_godown(self):
+        with Session(self.engine) as session:
+            inventory_view = Permission(code="inventory.view")
+            godown_a = Godown(tenant_id=self.tenant_a_id, name="Assigned Godown")
+            godown_a2 = Godown(tenant_id=self.tenant_a_id, name="Other Godown")
+            godown_b = Godown(tenant_id=self.tenant_b_id, name="Tenant B Godown")
+            session.add_all([inventory_view, godown_a, godown_a2, godown_b])
+            session.flush()
+            session.add(RolePermission(
+                role_id=self.assigned_role_id,
+                permission_id=inventory_view.id,
+                scope=ASSIGNED_LOCATIONS,
+            ))
+            session.add(EmployeeGodown(employee_id=self.employee_a_id, godown_id=godown_a.id))
+            session.flush()
+            user = session.get(User, self.user_id)
+            service = AuthorizationService()
+            service.require_permission(session, user, "inventory.view", godown_id=godown_a.id)
+            with self.assertRaises(PermissionDeniedError):
+                service.require_permission(session, user, "inventory.view", godown_id=godown_a2.id)
+            with self.assertRaises(PermissionDeniedError):
+                service.require_permission(session, user, "inventory.view", godown_id=godown_b.id)
 
     def test_user_without_permission_is_denied(self):
         with Session(self.engine) as session:
