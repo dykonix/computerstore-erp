@@ -257,6 +257,17 @@ def update_user_locations(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Link an employee before assigning stores or godowns",
         )
+    employee = session.scalar(
+        select(Employee).where(
+            Employee.id == user.employee_id,
+            Employee.tenant_id == tenant_id,
+        )
+    )
+    if employee is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The linked employee does not belong to the current tenant",
+        )
 
     store_ids = list(dict.fromkeys(request.store_ids))
     godown_ids = list(dict.fromkeys(request.godown_ids))
