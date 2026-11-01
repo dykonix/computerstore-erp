@@ -30,6 +30,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute(
+        "UPDATE role_permissions SET scope = 'assigned_stores' "
+        "WHERE scope IN ('assigned_locations', 'all_tenant_locations')"
+    )
     op.drop_constraint("ck_role_permissions_scope", "role_permissions", type_="check")
     op.create_check_constraint(
         "ck_role_permissions_scope",
