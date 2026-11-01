@@ -1,12 +1,14 @@
 import re
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.models.role import Role
 from app.models.user_role import UserRole
+from app.models.employee_store import EmployeeStore
+from app.models.store import Store
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
 
@@ -77,6 +79,28 @@ class UserIdentityService:
                 role_ids = list(dict.fromkeys(request.role_ids))
                 if len(role_ids) != len(request.role_ids):
                     raise UserIdentityError("Each role can be selected only once")
+                store_ids = list(dict.fromkeys(request.store_ids))
+                if len(store_ids) != len(request.store_ids):
+                    raise UserIdentityError("Each store can be selected only once")
+                if store_ids and request.employee_id is None:
+                    raise UserIdentityError(
+                        "Link an employee before assigning store access"
+                    )
+                stores = []
+                if store_ids:
+                    stores = list(
+                        session.scalars(
+                            select(Store).where(
+                                Store.tenant_id == tenant_id,
+                                Store.id.in_(store_ids),
+                                Store.is_active.is_(True),
+                            )
+                        )
+                    )
+                    if len(stores) != len(store_ids):
+                        raise UserIdentityError(
+                            "One or more selected stores are inactive or outside the current tenant"
+                        )
                 roles = []
                 if role_ids:
                     roles = list(
@@ -106,6 +130,19 @@ class UserIdentityService:
                 session.flush()
                 for role in roles:
                     session.add(UserRole(user_id=user.id, role_id=role.id))
+                if request.employee_id is not None:
+                    session.execute(
+                        delete(EmployeeStore).where(
+                            EmployeeStore.employee_id == request.employee_id
+                        )
+                    )
+                    for store in stores:
+                        session.add(
+                            EmployeeStore(
+                                employee_id=request.employee_id,
+                                store_id=store.id,
+                            )
+                        )
                 session.flush()
                 return user
         except IntegrityError as error:
