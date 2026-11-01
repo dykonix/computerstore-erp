@@ -226,7 +226,7 @@ export default function Roles() {
                   </label>
                   {checked && (storeScopedPermissions.has(permission.code) || locationScopedPermissions.has(permission.code)) && (
                     <label className="permission-scope">
-                      <span>Store scope</span>
+                      <span>{locationScopedPermissions.has(permission.code) ? "Inventory location scope" : "Store scope"}</span>
                       <select
                         value={grants[permission.code]}
                         onChange={(event) => setGrants((current) => ({ ...current, [permission.code]: event.target.value as PermissionScope }))}
