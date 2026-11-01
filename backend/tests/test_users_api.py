@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -11,10 +11,12 @@ from app.api.dependencies import get_auth_db
 from app.database.base import Base
 from app.database.session import get_db
 from app.models.employee import Employee
+from app.models.employee_store import EmployeeStore
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.tenant import Tenant
+from app.models.store import Store
 from app.models.user import User
 from app.models.user_role import UserRole
 from app.security.jwt import create_access_token
@@ -157,6 +159,74 @@ class UserManagementApiTests(unittest.TestCase):
             created = session.get(User, payload["id"])
             self.assertNotEqual(created.password_hash, "A-strong-initial-password")
             self.assertTrue(created.password_hash)
+
+    def test_create_user_assigns_roles_and_selected_stores_atomically(self):
+        with Session(self.engine) as session:
+            employee = Employee(
+                tenant_id=self.tenant_id,
+                email="sales@example.com",
+                name="Sales Employee",
+            )
+            role = Role(tenant_id=self.tenant_id, name="Sales")
+            permission = session.scalar(
+                select(Permission).where(Permission.code == "sell")
+            )
+            if permission is None:
+                permission = Permission(code="sell", description="Create sales")
+                session.add(permission)
+            store = Store(tenant_id=self.tenant_id, name="Store A")
+            session.add_all([employee, role, store])
+            session.flush()
+            session.add(
+                RolePermission(
+                    role_id=role.id,
+                    permission_id=permission.id,
+                    scope="assigned_stores",
+                )
+            )
+            session.commit()
+            employee_id, role_id, store_id = employee.id, role.id, store.id
+
+        response = self.client().post(
+            "/api/users",
+            json={
+                "username": "sales-user",
+                "email": "sales-user@example.com",
+                "mobile": "+15550000003",
+                "employee_id": employee_id,
+                "role_ids": [role_id],
+                "store_ids": [store_id],
+                "initial_password": "A-strong-initial-password",
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        payload = response.json()
+        self.assertEqual(payload["role_ids"], [role_id])
+        self.assertEqual(payload["role_names"], ["Sales"])
+        with Session(self.engine) as session:
+            self.assertIsNotNone(
+                session.get(UserRole, {"user_id": payload["id"], "role_id": role_id})
+            )
+            self.assertIsNotNone(
+                session.get(
+                    EmployeeStore,
+                    {"employee_id": employee_id, "store_id": store_id},
+                )
+            )
+
+    def test_create_user_rejects_store_access_without_linked_employee(self):
+        response = self.client().post(
+            "/api/users",
+            json={
+                "username": "store-user",
+                "email": "store-user@example.com",
+                "mobile": "+15550000004",
+                "employee_id": None,
+                "store_ids": [1],
+                "initial_password": "A-strong-initial-password",
+            },
+        )
+        self.assertEqual(response.status_code, 409)
 
     def test_user_list_requires_authentication(self):
         response = TestClient(app).get("/api/users")
