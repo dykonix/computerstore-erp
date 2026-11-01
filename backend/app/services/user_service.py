@@ -1,9 +1,12 @@
 import re
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.models.role import Role
+from app.models.user_role import UserRole
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
 
@@ -71,7 +74,25 @@ class UserIdentityService:
                 self._validate_identity(
                     session, tenant_id, email, mobile, request.employee_id
                 )
-                return self.repository.add_user(
+                role_ids = list(dict.fromkeys(request.role_ids))
+                if len(role_ids) != len(request.role_ids):
+                    raise UserIdentityError("Each role can be selected only once")
+                roles = []
+                if role_ids:
+                    roles = list(
+                        session.scalars(
+                            select(Role).where(
+                                Role.tenant_id == tenant_id,
+                                Role.id.in_(role_ids),
+                                Role.is_active.is_(True),
+                            )
+                        )
+                    )
+                    if len(roles) != len(role_ids):
+                        raise UserIdentityError(
+                            "One or more selected roles are inactive or outside the current tenant"
+                        )
+                user = self.repository.add_user(
                     session,
                     User(
                         tenant_id=tenant_id,
@@ -82,6 +103,11 @@ class UserIdentityService:
                         employee_id=request.employee_id,
                     ),
                 )
+                session.flush()
+                for role in roles:
+                    session.add(UserRole(user_id=user.id, role_id=role.id))
+                session.flush()
+                return user
         except IntegrityError as error:
             raise UserIdentityError(
                 "Email, mobile, or employee is already assigned to a user"
