@@ -41,7 +41,7 @@ class RoleRepository:
         return list(
             session.scalars(
                 select(Permission)
-                .where(Permission.code != "ALL")
+                .where(Permission.code.notin_(["ALL", "permissions.manage"]))
                 .order_by(Permission.code)
             )
         )
