@@ -73,8 +73,9 @@ class UserManagementApiTests(unittest.TestCase):
             )
             permission = Permission(code="users.manage")
             roles_permission = Permission(code="roles.manage")
+            employees_permission = Permission(code="employees.manage")
             role = Role(tenant_id=tenant.id, name="Admin")
-            session.add_all([employee, other_employee, permission, roles_permission, role])
+            session.add_all([employee, other_employee, permission, roles_permission, employees_permission, role])
             session.flush()
             admin = User(
                 tenant_id=tenant.id,
@@ -107,6 +108,11 @@ class UserManagementApiTests(unittest.TestCase):
                     RolePermission(
                         role_id=role.id,
                         permission_id=roles_permission.id,
+                        scope="all_tenant_stores",
+                    ),
+                    RolePermission(
+                        role_id=role.id,
+                        permission_id=employees_permission.id,
                         scope="all_tenant_stores",
                     ),
                 ]
