@@ -19,13 +19,14 @@ const emptyForm: UserCreateRequest = {
   employee_id: null,
   role_ids: [],
   store_ids: null,
+  godown_ids: null,
   initial_password: '',
 }
 
 export default function Users() {
   const { user: currentUser, hasPermission } = useAuth()
   const [users, setUsers] = useState<UserRecord[]>([])
-  const [formData, setFormData] = useState<UserFormData>({ employees: [], roles: [], stores: [] })
+  const [formData, setFormData] = useState<UserFormData>({ employees: [], roles: [], stores: [], godowns: [] })
   const [form, setForm] = useState<UserCreateRequest>(emptyForm)
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
@@ -180,6 +181,9 @@ export default function Users() {
                 store_ids: employeeId === null || !hasPermission('employees.manage') ? null : formData.stores
                   .filter((store) => store.employee_ids.includes(employeeId))
                   .map((store) => store.id),
+                godown_ids: employeeId === null || !hasPermission('employees.manage') ? null : formData.godowns
+                  .filter((godown) => godown.employee_ids.includes(employeeId))
+                  .map((godown) => godown.id),
               })
             }}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
             {hasPermission('roles.manage') && <div className="form-grid__full">
@@ -225,6 +229,33 @@ export default function Users() {
                         })}
                       />
                       <span><strong>{store.name}</strong></span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="form-grid__full">
+              <span className="field-label">Godown access</span>
+              <p className="field-help">Inventory location permissions can be limited to the godowns assigned to this employee. Selecting godowns here updates the employee's godown assignments.</p>
+              {!hasPermission('employees.manage') ? (
+                <p className="field-help">Your account does not have permission to change employee godown assignments.</p>
+              ) : !form.employee_id ? (
+                <p className="field-help">Link an employee to configure godown access.</p>
+              ) : (
+                <div className="permission-list">
+                  {formData.godowns.map((godown) => (
+                    <label className="permission-checkbox" key={godown.id}>
+                      <input
+                        type="checkbox"
+                        checked={(form.godown_ids ?? []).includes(godown.id)}
+                        onChange={(event) => setForm({
+                          ...form,
+                          godown_ids: event.target.checked
+                            ? [...(form.godown_ids ?? []), godown.id]
+                            : (form.godown_ids ?? []).filter((id) => id !== godown.id),
+                        })}
+                      />
+                      <span><strong>{godown.name}</strong></span>
                     </label>
                   ))}
                 </div>
