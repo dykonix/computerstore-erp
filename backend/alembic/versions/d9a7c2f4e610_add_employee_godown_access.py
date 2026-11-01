@@ -1,7 +1,7 @@
 """add employee godown assignments and location scopes
 
 Revision ID: d9a7c2f4e610
-Revises: b71d4c9e2a10
+Revises: 7a2c4e91d603
 Create Date: 2026-11-01
 """
 from typing import Sequence, Union
@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision: str = "d9a7c2f4e610"
-down_revision: Union[str, Sequence[str], None] = "b71d4c9e2a10"
+down_revision: Union[str, Sequence[str], None] = "7a2c4e91d603"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
