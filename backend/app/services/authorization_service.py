@@ -31,6 +31,16 @@ class AuthorizationService:
     ) -> None:
         self.repository = repository or AuthorizationRepository()
 
+    def is_super_admin(self, session: Session, user: User) -> bool:
+        if not user.is_active:
+            return False
+        return any(
+            code == ALL_PERMISSION
+            for code, _scope in self.repository.list_active_user_permission_grants(
+                session, user
+            )
+        )
+
     def effective_permissions(
         self,
         session: Session,

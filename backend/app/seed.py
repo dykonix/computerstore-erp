@@ -301,6 +301,7 @@ def seed_authorization(session: Session, tenant_id: int) -> None:
     for permission_code in (
         "users.manage",
         "roles.manage",
+        "permissions.manage",
         "employees.manage",
         "stores.manage",
         "reports.view",

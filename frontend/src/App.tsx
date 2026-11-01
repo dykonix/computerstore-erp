@@ -15,6 +15,7 @@ import CategoryMaster from './pages/CategoryMaster'
 import WarrantyMaster from './pages/WarrantyMaster'
 import PromotionMaster from './pages/PromotionMaster'
 import Users from './pages/Users'
+import Roles from './pages/Roles'
 
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
@@ -151,6 +152,8 @@ function MainContent() {
                 <Sales />
               ) : path === '/users' ? (
                 hasPermission('users.manage') ? <Users /> : <Navigate to="/dashboard" replace />
+              ) : path === '/roles' ? (
+                hasPermission('roles.manage') ? <Roles /> : <Navigate to="/dashboard" replace />
               ) : item.permission ? (
                 restrictedElement(item.permission, label)
               ) : (
