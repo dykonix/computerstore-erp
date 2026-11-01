@@ -216,7 +216,7 @@ export default function Users() {
                     <label className="permission-checkbox" key={store.id}>
                       <input
                         type="checkbox"
-                        checked={form.store_ids.includes(store.id)}
+                        checked={(form.store_ids ?? []).includes(store.id)}
                         onChange={(event) => setForm({
                           ...form,
                           store_ids: event.target.checked
