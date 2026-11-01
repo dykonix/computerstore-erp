@@ -182,13 +182,13 @@ class AuthorizationService:
         if not matching_scopes:
             raise PermissionDeniedError("Permission denied")
 
-        if ALL_TENANT_STORES in matching_scopes:
+        if ALL_TENANT_STORES in matching_scopes or ALL_TENANT_LOCATIONS in matching_scopes:
             return self.repository.list_active_tenant_stores(
                 session,
                 user.tenant_id,
             )
 
-        if ASSIGNED_STORES in matching_scopes:
+        if ASSIGNED_STORES in matching_scopes or ASSIGNED_LOCATIONS in matching_scopes:
             employee = self._get_active_employee(
                 session,
                 user,
@@ -201,6 +201,23 @@ class AuthorizationService:
             )
 
         raise PermissionDeniedError("Permission denied")
+
+    def list_allowed_godowns(
+        self, session: Session, user: User, permission_code: str = "inventory.view"
+    ):
+        if not user.is_active:
+            raise PermissionDeniedError("User is inactive")
+        grants = self.repository.list_active_user_permission_grants(session, user)
+        registered = set(self.repository.list_permission_codes(session))
+        if permission_code not in registered or permission_code == ALL_PERMISSION:
+            raise PermissionDeniedError("Permission denied")
+        scopes = [scope for code, scope in grants if code == ALL_PERMISSION or code == permission_code]
+        if ALL_PERMISSION in {code for code, _scope in grants} or ALL_TENANT_LOCATIONS in scopes:
+            return self.repository.list_active_tenant_godowns(session, user.tenant_id)
+        if ASSIGNED_LOCATIONS not in scopes:
+            return []
+        employee = self._get_active_employee(session, user)
+        return self.repository.list_employee_godowns(session, user.tenant_id, employee.id)
 
     def assign_role(
         self,
