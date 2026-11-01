@@ -206,3 +206,28 @@ tbody tr:last-child td { border-bottom: 0; }
   .form-grid__full { grid-column: auto; }
   .list-toolbar { align-items: stretch; flex-direction: column; }
 }
+
+
+/* IAM role and permission management */
+.role-permissions-form { margin-bottom: 24px; }
+.role-permissions-form .section-heading { margin-bottom: 18px; }
+.role-permissions-form .section-heading h2 { margin: 0; color: var(--ink); font: 600 1.4rem Georgia, serif; }
+.permission-list { border: 1px solid var(--line); background: var(--panel); }
+.permission-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); padding: 12px 16px; }
+.permission-row:last-child { border-bottom: 0; }
+.permission-checkbox { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; font-weight: 500; }
+.permission-checkbox input { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--red); }
+.permission-checkbox span { display: grid; gap: 3px; }
+.permission-checkbox strong { color: var(--ink); font-size: .8rem; }
+.permission-checkbox small { color: var(--muted); font-size: .7rem; font-weight: 500; }
+.permission-scope { width: min(100%, 220px); }
+.permission-scope select { width: 100%; border: 1px solid #cfc6bc; border-radius: 2px; padding: 8px; color: var(--ink); background: #fff; font: inherit; font-size: .75rem; }
+.role-permission-chips { display: flex; flex-wrap: wrap; gap: 5px; max-width: 360px; }
+.role-actions { white-space: nowrap; }
+.role-active-toggle { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.role-active-toggle input { width: 16px; height: 16px; accent-color: var(--red); }
+@media (max-width: 760px) {
+  .permission-row { align-items: stretch; flex-direction: column; }
+  .permission-scope { width: 100%; }
+  .role-actions { white-space: normal; }
+}
