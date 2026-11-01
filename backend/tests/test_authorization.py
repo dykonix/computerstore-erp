@@ -381,7 +381,7 @@ class AuthorizationTests(unittest.TestCase):
                 ALL_TENANT_STORES,
             )
             self.assertEqual(
-                session.query(Role).filter_by(tenant_id=self.tenant_a_id).count(), 4
+                session.query(Role).filter_by(tenant_id=self.tenant_a_id).count(), 13
             )
 
     def test_require_permission_dependency_returns_403_when_denied(self):
