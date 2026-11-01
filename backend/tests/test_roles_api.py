@@ -143,6 +143,7 @@ class RoleManagementApiTests(unittest.TestCase):
             )
             session.commit()
             self.tenant_id = tenant.id
+            self.admin_id = admin.id
             self.admin_role_id = admin_role.id
             self.manager_role_id = manager_role.id
             self.target_user_id = target.id
@@ -225,6 +226,13 @@ class RoleManagementApiTests(unittest.TestCase):
         response = self.client(token=self.manager_token).put(
             f"/api/roles/{created.json()['id']}/permissions",
             json={"permissions": [{"permission_code": "sell", "scope": "assigned_stores"}]},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_role_manager_cannot_deactivate_system_administrator(self):
+        response = self.client(token=self.manager_token).patch(
+            f"/api/users/{self.admin_id}/status",
+            json={"is_active": False},
         )
         self.assertEqual(response.status_code, 403)
 
