@@ -261,7 +261,7 @@ export default function Sales() {
                   ? ({
                       id: promotion.id,
                       name: promotion.name,
-                      cashback_amount: '0.00',
+                     cashback_amount: 0,
                     } satisfies ProductPromotion)
                   : null
               }),
