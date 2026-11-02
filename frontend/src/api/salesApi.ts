@@ -137,6 +137,26 @@ export async function addSaleItem(
   )
 }
 
+export interface UpdateSaleItemRequest {
+  quantity: number
+  actual_unit_price: number
+  minimum_price_override?: boolean
+}
+
+export async function updateSaleItem(
+  saleId: number,
+  saleItemId: number,
+  request: UpdateSaleItemRequest,
+): Promise<SaleItemResponse> {
+  return apiRequest<SaleItemResponse>(
+    `/api/sales/${saleId}/items/${saleItemId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+    },
+  )
+}
+
 export async function reserveSale(
   saleId: number,
 ): Promise<SaleResponse> {

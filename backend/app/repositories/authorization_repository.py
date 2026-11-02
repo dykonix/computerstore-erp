@@ -1,9 +1,8 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.employee import Employee
-from app.models.employee_store import EmployeeStore
-from app.models.employee_godown import EmployeeGodown
+from app.models.user_store import UserStore
+from app.models.user_godown import UserGodown
 from app.models.godown import Godown
 from app.models.permission import Permission
 from app.models.role import Role
@@ -194,53 +193,41 @@ class AuthorizationRepository:
 
         return list(session.scalars(statement))
 
-    def list_employee_stores(
+    def list_user_stores(
         self,
         session: Session,
         tenant_id: int,
-        employee_id: int,
+        user_id: int,
     ) -> list[Store]:
         statement = (
             select(Store)
             .join(
-                EmployeeStore,
-                EmployeeStore.store_id == Store.id,
+                UserStore,
+                UserStore.store_id == Store.id,
             )
             .where(
                 Store.tenant_id == tenant_id,
                 Store.is_active.is_(True),
-                EmployeeStore.employee_id == employee_id,
+                UserStore.user_id == user_id,
             )
             .order_by(Store.name)
         )
 
         return list(session.scalars(statement))
 
-    def get_employee(
+    def user_has_store(
         self,
         session: Session,
-        tenant_id: int,
-        employee_id: int,
-    ) -> Employee | None:
-        return session.scalar(
-            select(Employee).where(
-                Employee.id == employee_id,
-                Employee.tenant_id == tenant_id,
-            )
-        )
-
-    def employee_has_store(
-        self,
-        session: Session,
-        employee_id: int,
+        user_id: int,
         store_id: int,
     ) -> bool:
         return session.scalar(
-            select(EmployeeStore.employee_id).where(
-                EmployeeStore.employee_id == employee_id,
-                EmployeeStore.store_id == store_id,
+            select(UserStore.user_id).where(
+                UserStore.user_id == user_id,
+                UserStore.store_id == store_id,
             )
         ) is not None
+
     def get_godown(self, session: Session, tenant_id: int, godown_id: int) -> Godown | None:
         return session.scalar(
             select(Godown).where(
@@ -257,17 +244,17 @@ class AuthorizationRepository:
             ).order_by(Godown.name)
         ))
 
-    def list_employee_godowns(self, session: Session, tenant_id: int, employee_id: int) -> list[Godown]:
+    def list_user_godowns(self, session: Session, tenant_id: int, user_id: int) -> list[Godown]:
         return list(session.scalars(
-            select(Godown).join(EmployeeGodown, EmployeeGodown.godown_id == Godown.id).where(
+            select(Godown).join(UserGodown, UserGodown.godown_id == Godown.id).where(
                 Godown.tenant_id == tenant_id,
                 Godown.is_active.is_(True),
-                EmployeeGodown.employee_id == employee_id,
+                UserGodown.user_id == user_id,
             ).order_by(Godown.name)
         ))
 
-    def employee_has_godown(self, session: Session, employee_id: int, godown_id: int) -> bool:
-        return session.scalar(select(EmployeeGodown.employee_id).where(
-            EmployeeGodown.employee_id == employee_id,
-            EmployeeGodown.godown_id == godown_id,
+    def user_has_godown(self, session: Session, user_id: int, godown_id: int) -> bool:
+        return session.scalar(select(UserGodown.user_id).where(
+            UserGodown.user_id == user_id,
+            UserGodown.godown_id == godown_id,
         )) is not None

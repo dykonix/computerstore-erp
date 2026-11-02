@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_tenant, get_current_user, get_auth_db, require_permission
 from app.database.session import get_db
 from app.models.employee import Employee
-from app.models.employee_store import EmployeeStore
-from app.models.employee_godown import EmployeeGodown
+from app.models.user_store import UserStore
+from app.models.user_godown import UserGodown
 from app.models.godown import Godown
 from app.models.store import Store
 from app.models.role import Role
@@ -22,6 +22,7 @@ from app.schemas.iam import (
     UserAdminCreate,
     UserAdminResponse,
     UserFormDataResponse,
+    UserLocationAssignmentsUpdate,
     UserStatusUpdate,
 )
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
@@ -68,6 +69,8 @@ def _user_response(session: Session, user: User) -> UserAdminResponse:
         is_active=user.is_active,
         role_ids=[row.id for row in role_rows],
         role_names=[row.name for row in role_rows],
+        store_ids=list(session.scalars(select(UserStore.store_id).where(UserStore.user_id == user.id))),
+        godown_ids=list(session.scalars(select(UserGodown.godown_id).where(UserGodown.user_id == user.id))),
     )
 
 
@@ -96,22 +99,22 @@ def get_user_form_data(
     godowns = list(session.scalars(
         select(Godown).where(Godown.tenant_id == tenant_id, Godown.is_active.is_(True)).order_by(Godown.name)
     ))
-    employee_godown_rows = session.execute(
-        select(EmployeeGodown.employee_id, EmployeeGodown.godown_id)
-        .join(Godown, Godown.id == EmployeeGodown.godown_id)
+    user_godown_rows = session.execute(
+        select(UserGodown.user_id, UserGodown.godown_id)
+        .join(Godown, Godown.id == UserGodown.godown_id)
         .where(Godown.tenant_id == tenant_id, Godown.is_active.is_(True))
     ).all()
-    employee_ids_by_godown: dict[int, list[int]] = {godown.id: [] for godown in godowns}
-    for employee_id, godown_id in employee_godown_rows:
-        employee_ids_by_godown.setdefault(godown_id, []).append(employee_id)
-    employee_store_rows = session.execute(
-        select(EmployeeStore.employee_id, EmployeeStore.store_id)
-        .join(Store, Store.id == EmployeeStore.store_id)
+    user_ids_by_godown: dict[int, list[int]] = {godown.id: [] for godown in godowns}
+    for user_id, godown_id in user_godown_rows:
+        user_ids_by_godown.setdefault(godown_id, []).append(user_id)
+    user_store_rows = session.execute(
+        select(UserStore.user_id, UserStore.store_id)
+        .join(Store, Store.id == UserStore.store_id)
         .where(Store.tenant_id == tenant_id, Store.is_active.is_(True))
     ).all()
-    employee_ids_by_store: dict[int, list[int]] = {store.id: [] for store in stores}
-    for employee_id, store_id in employee_store_rows:
-        employee_ids_by_store.setdefault(store_id, []).append(employee_id)
+    user_ids_by_store: dict[int, list[int]] = {store.id: [] for store in stores}
+    for user_id, store_id in user_store_rows:
+        user_ids_by_store.setdefault(store_id, []).append(user_id)
     return UserFormDataResponse(
         employees=[
             EmployeeOption(id=employee.id, name=employee.name, email=employee.email)
@@ -119,11 +122,11 @@ def get_user_form_data(
         ],
         roles=[RoleOption(id=role.id, name=role.name) for role in roles],
         stores=[
-            StoreOption(id=store.id, name=store.name, employee_ids=employee_ids_by_store.get(store.id, []))
+            StoreOption(id=store.id, name=store.name, user_ids=user_ids_by_store.get(store.id, []))
             for store in stores
         ],
         godowns=[
-            GodownOption(id=godown.id, name=godown.name, employee_ids=employee_ids_by_godown.get(godown.id, []))
+            GodownOption(id=godown.id, name=godown.name, user_ids=user_ids_by_godown.get(godown.id, []))
             for godown in godowns
         ],
     )
@@ -225,6 +228,76 @@ def update_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found") from error
     except UserIdentityError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+
+@router.patch("/{user_id}/locations", status_code=status.HTTP_204_NO_CONTENT)
+def update_user_locations(
+    user_id: int,
+    request: UserLocationAssignmentsUpdate,
+    current_user: User = Depends(get_current_user),
+    tenant_id: int = Depends(get_current_tenant),
+    auth_session: Session = Depends(get_auth_db),
+    session: Session = Depends(get_db),
+) -> Response:
+    try:
+        AuthorizationService().require_permission(
+            auth_session, current_user, "employees.manage"
+        )
+    except PermissionDeniedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Location assignment requires employees.manage permission",
+        ) from error
+
+    user = session.scalar(
+        select(User).where(User.id == user_id, User.tenant_id == tenant_id)
+    )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    store_ids = list(dict.fromkeys(request.store_ids))
+    godown_ids = list(dict.fromkeys(request.godown_ids))
+    if len(store_ids) != len(request.store_ids) or len(godown_ids) != len(request.godown_ids):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Duplicate store or godown selections are not allowed",
+        )
+
+    stores = list(session.scalars(
+        select(Store).where(
+            Store.tenant_id == tenant_id,
+            Store.id.in_(store_ids),
+            Store.is_active.is_(True),
+        )
+    )) if store_ids else []
+    if len(stores) != len(store_ids):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="One or more selected stores are inactive or outside the current tenant",
+        )
+
+    godowns = list(session.scalars(
+        select(Godown).where(
+            Godown.tenant_id == tenant_id,
+            Godown.id.in_(godown_ids),
+            Godown.is_active.is_(True),
+        )
+    )) if godown_ids else []
+    if len(godowns) != len(godown_ids):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="One or more selected godowns are inactive or outside the current tenant",
+        )
+
+    session.execute(delete(UserStore).where(UserStore.user_id == user.id))
+    session.execute(delete(UserGodown).where(UserGodown.user_id == user.id))
+    session.add_all([
+        UserStore(user_id=user.id, store_id=store.id) for store in stores
+    ])
+    session.add_all([
+        UserGodown(user_id=user.id, godown_id=godown.id) for godown in godowns
+    ])
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/{user_id}/status", response_model=UserAdminResponse, dependencies=[_users_manage])

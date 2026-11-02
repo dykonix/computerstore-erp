@@ -3,7 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_any_permission, require_permission
 from app.database.session import get_db
 from app.models.product import Product
 from app.models.user import User
@@ -74,6 +74,7 @@ def _benefit_response(benefit) -> PromotionBenefitResponse:
     "",
     response_model=PromotionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def create_promotion(
     request: PromotionCreateRequest,
@@ -104,7 +105,7 @@ def create_promotion(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.get("", response_model=list[PromotionResponse])
+@router.get("", response_model=list[PromotionResponse], dependencies=[Depends(require_permission("offers.manage"))])
 def list_promotions(
     session: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -121,6 +122,7 @@ def list_promotions(
 @router.get(
     "/products/{product_id}",
     response_model=list[ProductPromotionResponse],
+    dependencies=[Depends(require_any_permission('offers.manage', 'sell'))],
 )
 def list_active_product_promotions(
     product_id: int,
@@ -145,7 +147,7 @@ def list_active_product_promotions(
     ]
 
 
-@router.get("/{promotion_id}", response_model=PromotionResponse)
+@router.get("/{promotion_id}", response_model=PromotionResponse, dependencies=[Depends(require_permission("offers.manage"))])
 def get_promotion(
     promotion_id: int,
     session: Session = Depends(get_db),
@@ -167,7 +169,7 @@ def get_promotion(
     return _promotion_response(promotion)
 
 
-@router.put("/{promotion_id}", response_model=PromotionResponse)
+@router.put("/{promotion_id}", response_model=PromotionResponse, dependencies=[Depends(require_permission("offers.manage"))])
 def update_promotion(
     promotion_id: int,
     request: PromotionUpdateRequest,
@@ -195,6 +197,7 @@ def update_promotion(
 @router.get(
     "/{promotion_id}/products",
     response_model=list[PromotionProductResponse],
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def list_qualifying_products(
     promotion_id: int,
@@ -226,6 +229,7 @@ def list_qualifying_products(
 @router.put(
     "/{promotion_id}/products",
     response_model=list[PromotionProductResponse],
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def replace_qualifying_products(
     promotion_id: int,
@@ -261,6 +265,7 @@ def replace_qualifying_products(
     "/{promotion_id}/products",
     response_model=PromotionProductResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def add_qualifying_product(
     promotion_id: int,
@@ -293,6 +298,7 @@ def add_qualifying_product(
 @router.get(
     "/{promotion_id}/groups",
     response_model=list[PromotionGroupResponse],
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def list_groups(
     promotion_id: int,
@@ -321,6 +327,7 @@ def list_groups(
 @router.get(
     "/{promotion_id}/benefits",
     response_model=list[PromotionSaleGroupResponse],
+    dependencies=[Depends(require_any_permission('offers.manage', 'sell'))],
 )
 def list_promotion_benefit_groups(
     promotion_id: int,
@@ -370,6 +377,7 @@ def list_promotion_benefit_groups(
     "/{promotion_id}/groups",
     response_model=PromotionGroupResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def create_group(
     promotion_id: int,
@@ -398,6 +406,7 @@ def create_group(
 @router.put(
     "/groups/{group_id}",
     response_model=PromotionGroupResponse,
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def update_group(
     group_id: int,
@@ -426,6 +435,7 @@ def update_group(
 @router.delete(
     "/groups/{group_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def delete_group(
     group_id: int,
@@ -446,6 +456,7 @@ def delete_group(
 @router.get(
     "/groups/{group_id}/benefits",
     response_model=list[PromotionBenefitResponse],
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def list_benefits(
     group_id: int,
@@ -475,6 +486,7 @@ def list_benefits(
     "/groups/{group_id}/benefits/product",
     response_model=PromotionBenefitResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def create_product_benefit(
     group_id: int,
@@ -502,6 +514,7 @@ def create_product_benefit(
     "/groups/{group_id}/benefits/warranty",
     response_model=PromotionBenefitResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def create_warranty_benefit(
     group_id: int,
@@ -529,6 +542,7 @@ def create_warranty_benefit(
     "/groups/{group_id}/benefits/cashback",
     response_model=PromotionBenefitResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("offers.manage"))],
 )
 def create_cashback_benefit(
     group_id: int,

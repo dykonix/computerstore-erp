@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant
+from app.api.dependencies import get_current_tenant, require_permission
 from app.database.session import get_db
 from app.schemas.warranty import (
     WarrantyOptionCreate,
@@ -24,7 +24,7 @@ def _service() -> WarrantyService:
     return WarrantyService()
 
 
-@router.get("", response_model=list[WarrantyOptionResponse])
+@router.get("", response_model=list[WarrantyOptionResponse], dependencies=[Depends(require_permission("products.manage"))])
 def list_warranty_options(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -44,6 +44,7 @@ def list_warranty_options(
     "",
     response_model=WarrantyOptionResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("products.manage"))],
 )
 def create_warranty_option(
     request: WarrantyOptionCreate,
@@ -58,7 +59,7 @@ def create_warranty_option(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.get("/{option_id}", response_model=WarrantyOptionResponse)
+@router.get("/{option_id}", response_model=WarrantyOptionResponse, dependencies=[Depends(require_permission("products.manage"))])
 def get_warranty_option(
     option_id: int,
     session: Session = Depends(get_db),
@@ -72,7 +73,7 @@ def get_warranty_option(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@router.put("/{option_id}", response_model=WarrantyOptionResponse)
+@router.put("/{option_id}", response_model=WarrantyOptionResponse, dependencies=[Depends(require_permission("products.manage"))])
 def update_warranty_option(
     option_id: int,
     request: WarrantyOptionUpdate,
@@ -89,7 +90,7 @@ def update_warranty_option(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.patch("/{option_id}/status", response_model=WarrantyOptionResponse)
+@router.patch("/{option_id}/status", response_model=WarrantyOptionResponse, dependencies=[Depends(require_permission("products.manage"))])
 def set_warranty_option_status(
     option_id: int,
     is_active: bool,
@@ -106,7 +107,7 @@ def set_warranty_option_status(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@router.get("/{option_id}/prices", response_model=list[WarrantyPriceResponse])
+@router.get("/{option_id}/prices", response_model=list[WarrantyPriceResponse], dependencies=[Depends(require_permission("products.manage"))])
 def list_warranty_prices(
     option_id: int,
     session: Session = Depends(get_db),
@@ -124,6 +125,7 @@ def list_warranty_prices(
     "/{option_id}/prices",
     response_model=WarrantyPriceResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("products.manage"))],
 )
 def create_warranty_price(
     option_id: int,
@@ -139,7 +141,7 @@ def create_warranty_price(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.put("/prices/{price_id}", response_model=WarrantyPriceResponse)
+@router.put("/prices/{price_id}", response_model=WarrantyPriceResponse, dependencies=[Depends(require_permission("products.manage"))])
 def update_warranty_price(
     price_id: int,
     request: WarrantyPriceUpdate,

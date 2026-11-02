@@ -73,9 +73,9 @@ class Sale(Base):
         nullable=True,
     )
 
-    employee_id: Mapped[int] = mapped_column(
+    employee_id: Mapped[int | None] = mapped_column(
         ForeignKey("employees.id"),
-        nullable=False,
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(

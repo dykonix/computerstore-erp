@@ -137,11 +137,6 @@ class SaleService:
     ):
         tenant_id = current_user.tenant_id
 
-        employee = self.auth_service.get_employee_for_user(
-            session,
-            current_user,
-        )
-
         self.authorization_service.require_permission(
             session,
             current_user,
@@ -168,7 +163,7 @@ class SaleService:
             tenant_id=tenant_id,
             store_id=store_id,
             customer_id=customer_id,
-            employee_id=employee.id,
+            employee_id=None,
             status="DRAFT",
             subtotal=Decimal("0.00"),
             invoice_discount=Decimal("0.00"),
@@ -240,19 +235,6 @@ class SaleService:
         if not product.is_active:
             raise ValueError(
                 "Inactive products cannot be added to a sale"
-            )
-
-        existing_item = (
-            self.sale_repository.get_sale_item_for_product(
-                session,
-                sale.id,
-                product_id,
-            )
-        )
-
-        if existing_item is not None:
-            raise ValueError(
-                "Product is already present in this sale"
             )
 
         inventory = self.inventory_repository.get_inventory_at_location(
@@ -816,11 +798,6 @@ class SaleService:
                 "Only draft sales can be reserved"
             )
 
-        employee = self.auth_service.get_employee_for_user(
-            session,
-            current_user,
-        )
-
         self.authorization_service.require_permission(
             session,
             current_user,
@@ -891,7 +868,7 @@ class SaleService:
                 from_store_id=sale.store_id,
                 reference_type="SALE",
                 reference_id=sale.id,
-                performed_by_employee_id=employee.id,
+                performed_by_employee_id=current_user.employee_id,
                 notes=f"Inventory reserved for sale {sale.id}",
                 quantity=item.quantity,
             )
@@ -1103,11 +1080,6 @@ class SaleService:
                     "UPI cashback requires a UPI payment"
                 )
 
-        employee = self.auth_service.get_employee_for_user(
-            session,
-            current_user,
-        )
-
         sale_items = self.sale_repository.list_sale_items(
             session,
             sale.id,
@@ -1164,7 +1136,7 @@ class SaleService:
                 from_store_id=sale.store_id,
                 reference_type="SALE",
                 reference_id=sale.id,
-                performed_by_employee_id=employee.id,
+                performed_by_employee_id=current_user.employee_id,
                 notes=f"Inventory sold for sale {sale.id}",
                 quantity=item.quantity,
             )

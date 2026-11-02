@@ -100,9 +100,6 @@ class AuthorizationService:
 
         if store_id is not None and godown_id is not None:
             raise PermissionDeniedError("Exactly one inventory location must be supplied")
-        if store_id is not None or godown_id is not None:
-            self._get_active_employee(session, user)
-
         if any(
             code == ALL_PERMISSION
             for code, _scope in grants
@@ -125,18 +122,17 @@ class AuthorizationService:
         if store_id is None and godown_id is None:
             return
 
-        employee = self._get_active_employee(session, user)
         if store_id is not None:
             self._validate_active_tenant_store(session, user.tenant_id, store_id)
             if ALL_TENANT_STORES in matching_scopes or ALL_TENANT_LOCATIONS in matching_scopes:
                 return
-            if (ASSIGNED_STORES in matching_scopes or ASSIGNED_LOCATIONS in matching_scopes) and self.repository.employee_has_store(session, employee.id, store_id):
+            if (ASSIGNED_STORES in matching_scopes or ASSIGNED_LOCATIONS in matching_scopes) and self.repository.user_has_store(session, user.id, store_id):
                 return
         else:
             self._validate_active_tenant_godown(session, user.tenant_id, godown_id)
             if ALL_TENANT_LOCATIONS in matching_scopes:
                 return
-            if ASSIGNED_LOCATIONS in matching_scopes and self.repository.employee_has_godown(session, employee.id, godown_id):
+            if ASSIGNED_LOCATIONS in matching_scopes and self.repository.user_has_godown(session, user.id, godown_id):
                 return
         raise PermissionDeniedError("Permission denied")
 
@@ -189,15 +185,10 @@ class AuthorizationService:
             )
 
         if ASSIGNED_STORES in matching_scopes or ASSIGNED_LOCATIONS in matching_scopes:
-            employee = self._get_active_employee(
-                session,
-                user,
-            )
-
-            return self.repository.list_employee_stores(
+            return self.repository.list_user_stores(
                 session,
                 user.tenant_id,
-                employee.id,
+                user.id,
             )
 
         raise PermissionDeniedError("Permission denied")
@@ -216,8 +207,7 @@ class AuthorizationService:
             return self.repository.list_active_tenant_godowns(session, user.tenant_id)
         if ASSIGNED_LOCATIONS not in scopes:
             return []
-        employee = self._get_active_employee(session, user)
-        return self.repository.list_employee_godowns(session, user.tenant_id, employee.id)
+        return self.repository.list_user_godowns(session, user.tenant_id, user.id)
 
     def assign_role(
         self,
@@ -408,26 +398,3 @@ class AuthorizationService:
         godown = self.repository.get_godown(session, tenant_id, godown_id)
         if godown is None or not godown.is_active:
             raise PermissionDeniedError("Permission denied")
-
-    def _get_active_employee(
-        self,
-        session: Session,
-        user: User,
-    ):
-        if user.employee_id is None:
-            raise PermissionDeniedError(
-                "Permission denied"
-            )
-
-        employee = self.repository.get_employee(
-            session,
-            user.tenant_id,
-            user.employee_id,
-        )
-
-        if employee is None or not employee.is_active:
-            raise PermissionDeniedError(
-                "Permission denied"
-            )
-
-        return employee

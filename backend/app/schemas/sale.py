@@ -89,6 +89,12 @@ class SaleItemResponse(BaseModel):
     line_total: Decimal
 
 
+class SaleItemUpdate(BaseModel):
+    quantity: int = Field(gt=0)
+    actual_unit_price: Decimal = Field(ge=0)
+    minimum_price_override: bool = False
+
+
 class SaleResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -96,7 +102,7 @@ class SaleResponse(BaseModel):
     tenant_id: int
     store_id: int
     customer_id: int | None
-    employee_id: int
+    employee_id: int | None = None
     status: Literal["DRAFT", "RESERVED", "CONFIRMED", "DELIVERED"]
     reserved_at: datetime | None
     reservation_warning_at: datetime | None

@@ -24,22 +24,22 @@ import LoginForm from './components/LoginForm'
 const navigationItems: {
   label: string
   path: string
-  permission?: string
+  permissions?: string[]
 }[] = [
   { label: 'Dashboard', path: '/dashboard' },
-  { label: 'Products', path: '/products' },
-  { label: 'Categories', path: '/categories' },
-  { label: 'Warranties', path: '/warranties' },
-  { label: 'Promotions', path: '/promotions' },
-  { label: 'Inventory', path: '/inventory' },
-  { label: 'Customers', path: '/customers' },
-  { label: 'Suppliers', path: '/suppliers' },
-  { label: 'Sales', path: '/sales', permission: 'sell' },
-  { label: 'Stores', path: '/stores' },
-  { label: 'Employees', path: '/employees' },
-  { label: 'Users', path: '/users', permission: 'users.manage' },
-  { label: 'Roles', path: '/roles', permission: 'roles.manage' },
-  { label: 'Reports', path: '/reports', permission: 'reports.view' },
+  { label: 'Products', path: '/products', permissions: ['products.manage'] },
+  { label: 'Categories', path: '/categories', permissions: ['categories.manage'] },
+  { label: 'Warranties', path: '/warranties', permissions: ['products.manage'] },
+  { label: 'Promotions', path: '/promotions', permissions: ['offers.manage'] },
+  { label: 'Inventory', path: '/inventory', permissions: ['inventory.view', 'inventory.manage'] },
+  { label: 'Customers', path: '/customers', permissions: ['customers.manage'] },
+  { label: 'Suppliers', path: '/suppliers', permissions: ['suppliers.manage'] },
+  { label: 'Sales', path: '/sales', permissions: ['sell'] },
+  { label: 'Stores', path: '/stores', permissions: ['stores.manage'] },
+  { label: 'Employees', path: '/employees', permissions: ['employees.manage'] },
+  { label: 'Users', path: '/users', permissions: ['users.manage'] },
+  { label: 'Roles', path: '/roles', permissions: ['roles.manage'] },
+  { label: 'Reports', path: '/reports', permissions: ['reports.view'] },
 ]
 
 function Header() {
@@ -72,21 +72,13 @@ function Navigation() {
   return (
     <nav className="main-navigation" aria-label="Main navigation">
       <ul>
-        {navigationItems.map(({ label, path, permission }) => (
-          <li key={path}>
-            {permission && !hasPermission(permission) ? (
-              <span
-                className="navigation-disabled"
-                aria-disabled="true"
-                title="You do not have access to this section"
-              >
-                {label}
-              </span>
-            ) : (
+        {navigationItems
+          .filter(({ permissions }) => !permissions || permissions.some(hasPermission))
+          .map(({ label, path }) => (
+            <li key={path}>
               <NavLink to={path}>{label}</NavLink>
-            )}
-          </li>
-        ))}
+            </li>
+          ))}
       </ul>
     </nav>
   )
@@ -113,16 +105,6 @@ function MainContent() {
     )
   }
 
-  const restrictedElement = (
-    permission: string,
-    title: string,
-  ) =>
-    hasPermission(permission) ? (
-      <PageHeading title={title} />
-    ) : (
-      <Navigate to="/dashboard" replace />
-    )
-
   return (
     <main className="main-content">
       <Routes>
@@ -131,37 +113,40 @@ function MainContent() {
           element={<Navigate to="/dashboard" replace />}
         />
 
-        {navigationItems.map(({ label, path, ...item }) => (
-          <Route
-            key={path}
-            path={path}
-            element={
-              path === '/products' ? (
-                <ProductMaster />
-              ) : path === '/inventory' ? (
-                <Inventory />
-              ) : path === '/categories' ? (
-                <CategoryMaster />
-              ) : path === '/warranties' ? (
-                <WarrantyMaster />
-              ) : path === '/promotions' ? (
-                <PromotionMaster />
-              ) : path === '/suppliers' ? (
-                <SupplierMaster />
-              ) : path === '/sales' ? (
-                <Sales />
-              ) : path === '/users' ? (
-                hasPermission('users.manage') ? <Users /> : <Navigate to="/dashboard" replace />
-              ) : path === '/roles' ? (
-                hasPermission('roles.manage') ? <Roles /> : <Navigate to="/dashboard" replace />
-              ) : item.permission ? (
-                restrictedElement(item.permission, label)
-              ) : (
-                <PageHeading title={label} />
-              )
-            }
-          />
-        ))}
+        {navigationItems.map(({ label, path, permissions }) => {
+          const page =
+            path === '/products' ? (
+              <ProductMaster />
+            ) : path === '/inventory' ? (
+              <Inventory />
+            ) : path === '/categories' ? (
+              <CategoryMaster />
+            ) : path === '/warranties' ? (
+              <WarrantyMaster />
+            ) : path === '/promotions' ? (
+              <PromotionMaster />
+            ) : path === '/suppliers' ? (
+              <SupplierMaster />
+            ) : path === '/sales' ? (
+              <Sales />
+            ) : path === '/users' ? (
+              <Users />
+            ) : path === '/roles' ? (
+              <Roles />
+            ) : (
+              <PageHeading title={label} />
+            )
+
+          const canAccess = !permissions || permissions.some(hasPermission)
+
+          return (
+            <Route
+              key={path}
+              path={path}
+              element={canAccess ? page : <Navigate to="/dashboard" replace />}
+            />
+          )
+        })}
 
         <Route
           path="*"

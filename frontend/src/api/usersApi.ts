@@ -10,6 +10,8 @@ export interface UserRecord {
   is_active: boolean
   role_ids: number[]
   role_names: string[]
+  store_ids: number[]
+  godown_ids: number[]
 }
 
 export interface EmployeeOption {
@@ -26,13 +28,13 @@ export interface RoleOption {
 export interface StoreOption {
   id: number
   name: string
-  employee_ids: number[]
+  user_ids: number[]
 }
 
 export interface GodownOption {
   id: number
   name: string
-  employee_ids: number[]
+  user_ids: number[]
 }
 
 export interface UserFormData {
@@ -70,7 +72,7 @@ export function createUser(payload: UserCreateRequest): Promise<UserRecord> {
 
 export function updateUser(
   userId: number,
-  payload: { email?: string; mobile?: string; employee_id?: number | null },
+  payload: { email?: string; mobile?: string; password?: string; employee_id?: number | null },
 ): Promise<UserRecord> {
   return apiRequest<UserRecord>(`/api/users/${userId}`, {
     method: 'PATCH',
@@ -97,5 +99,15 @@ export function assignRole(userId: number, roleId: number): Promise<void> {
 export function removeRole(userId: number, roleId: number): Promise<void> {
   return apiRequest<void>(`/api/users/${userId}/roles/${roleId}`, {
     method: 'DELETE',
+  })
+}
+
+export function updateUserLocations(
+  userId: number,
+  payload: { store_ids: number[]; godown_ids: number[] },
+): Promise<void> {
+  return apiRequest<void>(`/api/users/${userId}/locations`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   })
 }

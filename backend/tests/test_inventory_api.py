@@ -230,6 +230,22 @@ class InventoryServiceTests(unittest.TestCase):
             )
             self.assertEqual(destination.cost_price, Decimal("89.50"))
 
+    def test_inventory_cost_price_is_independent_per_location(self):
+        store_inventory_id = self.create(
+            self.opening(cost_price="5000.00")
+        )
+        godown_inventory_id = self.create(
+            self.opening(store_id=None, godown_id=self.godown_id, cost_price="4800.00")
+        )
+
+        self.update_cost_price(store_inventory_id, "5200.00")
+
+        with Session(self.engine) as session:
+            store_inventory = session.get(Inventory, store_inventory_id)
+            godown_inventory = session.get(Inventory, godown_inventory_id)
+            self.assertEqual(store_inventory.cost_price, Decimal("5200.00"))
+            self.assertEqual(godown_inventory.cost_price, Decimal("4800.00"))
+
     def test_inventory_cost_price_update_is_tenant_scoped(self):
         inventory_id = self.create()
         with self.assertRaises(InventoryNotFoundError):
@@ -272,9 +288,31 @@ class InventoryServiceTests(unittest.TestCase):
         with self.assertRaises(InventoryValidationError): self.create(self.opening(store_id=999))
         with self.assertRaises(InventoryValidationError): self.create(self.opening(store_id=None, godown_id=999))
 
-    def test_duplicate_balance_rejected(self):
-        self.create()
-        with self.assertRaises(InventoryValidationError): self.create()
+    def test_repeated_opening_stock_increases_existing_location_balance(self):
+        inventory_id = self.create(
+            self.opening(store_id=None, godown_id=self.godown_id, quantity=5, cost_price="10.00")
+        )
+        returned_id = self.create(
+            self.opening(store_id=None, godown_id=self.godown_id, quantity=7, cost_price="20.00")
+        )
+
+        self.assertEqual(returned_id, inventory_id)
+        with Session(self.engine) as session:
+            inventory = session.get(Inventory, inventory_id)
+            self.assertEqual(inventory.quantity, 12)
+            # Different-price stock is not split into a separate layer in this scoped fix.
+            # Preserve the existing cost price rather than changing the cost of prior stock.
+            self.assertEqual(inventory.cost_price, Decimal("10.00"))
+            movements = list(
+                session.scalars(
+                    select(InventoryMovement).where(
+                        InventoryMovement.product_id == self.product_id,
+                        InventoryMovement.movement_type == "OPENING",
+                    )
+                )
+            )
+            self.assertEqual(len(movements), 2)
+            self.assertEqual(sum(movement.quantity for movement in movements), 12)
 
     def test_movement_created(self):
         self.create()

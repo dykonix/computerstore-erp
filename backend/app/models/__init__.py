@@ -7,6 +7,8 @@ from app.models.category_attribute import CategoryAttribute
 from app.models.employee import Employee
 from app.models.employee_store import EmployeeStore
 from app.models.employee_godown import EmployeeGodown
+from app.models.user_store import UserStore
+from app.models.user_godown import UserGodown
 from app.models.godown import Godown
 from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
@@ -45,6 +47,8 @@ __all__ = [
     "Employee",
     "EmployeeStore",
     "EmployeeGodown",
+    "UserStore",
+    "UserGodown",
     "Godown",
     "Inventory",
     "InventoryMovement",

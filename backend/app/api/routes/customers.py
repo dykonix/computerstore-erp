@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_any_permission, require_permission
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.customer import CustomerCreateRequest, CustomerResponse
@@ -21,6 +21,7 @@ def _service() -> CustomerService:
 @router.get(
     "",
     response_model=list[CustomerResponse],
+    dependencies=[Depends(require_permission("customers.manage"))],
 )
 def list_active_customers(
     session: Session = Depends(get_db),
@@ -35,6 +36,7 @@ def list_active_customers(
 @router.get(
     "/search",
     response_model=list[CustomerResponse],
+    dependencies=[Depends(require_any_permission('customers.manage', 'sell'))],
 )
 def search_customers(
     query: str = Query(..., min_length=1),
@@ -52,6 +54,7 @@ def search_customers(
     "",
     response_model=CustomerResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_any_permission('customers.manage', 'sell'))],
 )
 def create_customer(
     request: CustomerCreateRequest,

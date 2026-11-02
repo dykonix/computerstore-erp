@@ -34,13 +34,13 @@ class RoleOption(BaseModel):
 class StoreOption(BaseModel):
     id: int
     name: str
-    employee_ids: list[int]
+    user_ids: list[int]
 
 
 class GodownOption(BaseModel):
     id: int
     name: str
-    employee_ids: list[int]
+    user_ids: list[int]
 
 
 class UserAdminResponse(BaseModel):
@@ -53,6 +53,8 @@ class UserAdminResponse(BaseModel):
     is_active: bool
     role_ids: list[int]
     role_names: list[str]
+    store_ids: list[int] = Field(default_factory=list)
+    godown_ids: list[int] = Field(default_factory=list)
 
 
 class UserFormDataResponse(BaseModel):
@@ -60,3 +62,10 @@ class UserFormDataResponse(BaseModel):
     roles: list[RoleOption]
     stores: list[StoreOption]
     godowns: list[GodownOption]
+
+
+class UserLocationAssignmentsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    store_ids: list[int] = Field(default_factory=list, max_length=20)
+    godown_ids: list[int] = Field(default_factory=list, max_length=20)

@@ -8,6 +8,7 @@ from app.models.user import User
 from app.schemas.sale import (
     SaleCreate,
     SaleItemCreate,
+    SaleItemUpdate,
     SaleItemResponse,
     SalePaymentCreate,
     SalePaymentResponse,
@@ -74,6 +75,8 @@ def create_sale(
             customer_id=request.customer_id,
         )
         return _sale_response(session, sale)
+    except PermissionDeniedError as error:
+        raise HTTPException(status_code=403, detail="Permission denied") from error
     except ValueError as error:
         raise HTTPException(
             status_code=400,
@@ -161,6 +164,34 @@ def add_sale_item(
             status_code=400,
             detail=str(error),
         ) from error
+
+
+@router.patch(
+    "/{sale_id}/items/{sale_item_id}",
+    response_model=SaleItemResponse,
+    status_code=status.HTTP_200_OK,
+)
+def update_sale_item(
+    sale_id: int,
+    sale_item_id: int,
+    request: SaleItemUpdate,
+    session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return _service().update_sale_item(
+            session=session,
+            current_user=current_user,
+            sale_id=sale_id,
+            sale_item_id=sale_item_id,
+            quantity=request.quantity,
+            actual_unit_price=request.actual_unit_price,
+            minimum_price_override=request.minimum_price_override,
+        )
+    except PermissionDeniedError as error:
+        raise HTTPException(status_code=403, detail="Permission denied") from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.post(

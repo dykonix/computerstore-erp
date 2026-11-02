@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_auth_db, get_current_tenant, get_current_user, require_permission
+from app.api.dependencies import get_auth_db, get_current_tenant, get_current_user, require_any_permission, require_permission
 from app.models.user import User
 from app.services.authorization_service import AuthorizationService, PermissionDeniedError
 from app.database.session import get_db
@@ -10,8 +10,13 @@ from app.schemas.inventory import InventoryCostPriceUpdate, InventoryFormDataRes
 from app.services.inventory_service import InventoryNotFoundError, InventoryService, InventoryValidationError
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
-_inventory_view = Depends(require_permission("inventory.view"))
+_inventory_view = Depends(require_any_permission("inventory.view", "inventory.manage"))
 _inventory_manage = Depends(require_permission("inventory.manage"))
+
+
+def _inventory_read_permission(session, user) -> str:
+    permissions = set(AuthorizationService().effective_permissions(session, user))
+    return "inventory.view" if "inventory.view" in permissions else "inventory.manage"
 
 
 def _require_location_access(session, user, permission, store_id=None, godown_id=None):
@@ -35,8 +40,9 @@ def inventory_form_data(session: Session = Depends(get_db), auth_session: Sessio
     repository = InventoryRepository()
     authorization = AuthorizationService()
     try:
-        stores = authorization.list_allowed_stores(auth_session, current_user, "inventory.view")
-        godowns = authorization.list_allowed_godowns(auth_session, current_user, "inventory.view")
+        read_permission = _inventory_read_permission(auth_session, current_user)
+        stores = authorization.list_allowed_stores(auth_session, current_user, read_permission)
+        godowns = authorization.list_allowed_godowns(auth_session, current_user, read_permission)
     except PermissionDeniedError as error:
         raise HTTPException(status_code=403, detail="Permission denied") from error
     return InventoryFormDataResponse(
@@ -71,12 +77,13 @@ def transfer_inventory(request: InventoryTransferCreate, session: Session = Depe
 def list_inventory(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), product_id: int | None = Query(None, gt=0), store_id: int | None = Query(None, gt=0), session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service), _permission=_inventory_view) -> InventoryListResponse:
     authorization = AuthorizationService()
     try:
-        stores = authorization.list_allowed_stores(auth_session, current_user, "inventory.view")
-        godowns = authorization.list_allowed_godowns(auth_session, current_user, "inventory.view")
+        read_permission = _inventory_read_permission(auth_session, current_user)
+        stores = authorization.list_allowed_stores(auth_session, current_user, read_permission)
+        godowns = authorization.list_allowed_godowns(auth_session, current_user, read_permission)
     except PermissionDeniedError as error:
         raise HTTPException(status_code=403, detail="Permission denied") from error
     if store_id is not None:
-        _require_location_access(auth_session, current_user, "inventory.view", store_id=store_id)
+        _require_location_access(auth_session, current_user, read_permission, store_id=store_id)
     rows, total = service.list_inventory(session, tenant_id, page, page_size, product_id, store_id, [item.id for item in stores], [item.id for item in godowns])
     return InventoryListResponse(items=[_row_response(row) for row in rows], page=page, page_size=page_size, total=total)
 
@@ -85,7 +92,7 @@ def list_inventory(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, 
 def get_inventory(inventory_id: int, session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service), _permission=_inventory_view) -> InventoryResponse:
     try:
         row = service.get_inventory(session, tenant_id, inventory_id)
-        _require_location_access(auth_session, current_user, "inventory.view", store_id=row[0].store_id, godown_id=row[0].godown_id)
+        _require_location_access(auth_session, current_user, _inventory_read_permission(auth_session, current_user), store_id=row[0].store_id, godown_id=row[0].godown_id)
         return _row_response(row)
     except InventoryNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
@@ -94,7 +101,9 @@ def get_inventory(inventory_id: int, session: Session = Depends(get_db), auth_se
 @router.put("/{inventory_id}", response_model=InventoryResponse)
 def update_inventory_cost_price(inventory_id: int, request: InventoryCostPriceUpdate, session: Session = Depends(get_db), auth_session: Session = Depends(get_auth_db), current_user: User = Depends(get_current_user), tenant_id: int = Depends(get_current_tenant), service: InventoryService = Depends(_service), _permission=_inventory_manage) -> InventoryResponse:
     try:
-        existing = service.get_inventory(session, tenant_id, inventory_id)
+        # Use the authorization session for the lookup so the business session
+        # has not started a transaction before the service opens its transaction.
+        existing = service.get_inventory(auth_session, tenant_id, inventory_id)
         _require_location_access(auth_session, current_user, "inventory.manage", store_id=existing[0].store_id, godown_id=existing[0].godown_id)
         service.update_inventory_cost_price(session, tenant_id, inventory_id, request)
         return _row_response(service.get_inventory(session, tenant_id, inventory_id))

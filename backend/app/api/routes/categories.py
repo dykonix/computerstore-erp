@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import require_permission
 from app.database.session import get_db
 from app.schemas.category import (
     CategoryCreate,
@@ -24,6 +25,7 @@ def _service() -> CategoryService:
     "",
     response_model=CategoryResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("categories.manage"))],
 )
 def create_category(
     request: CategoryCreate,
@@ -40,7 +42,7 @@ def create_category(
         ) from error
 
 
-@router.get("", response_model=list[CategoryResponse])
+@router.get("", response_model=list[CategoryResponse], dependencies=[Depends(require_permission("categories.manage"))])
 def list_categories(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -66,6 +68,7 @@ def list_categories(
 @router.get(
     "/{category_id}",
     response_model=CategoryResponse,
+    dependencies=[Depends(require_permission("categories.manage"))],
 )
 def get_category(
     category_id: int,
@@ -90,6 +93,7 @@ def get_category(
 @router.put(
     "/{category_id}",
     response_model=CategoryResponse,
+    dependencies=[Depends(require_permission("categories.manage"))],
 )
 def update_category(
     category_id: int,
@@ -122,6 +126,7 @@ def update_category(
 @router.patch(
     "/{category_id}/status",
     response_model=CategoryResponse,
+    dependencies=[Depends(require_permission("categories.manage"))],
 )
 def set_category_status(
     category_id: int,

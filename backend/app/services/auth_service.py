@@ -36,13 +36,9 @@ class AuthService:
         if not verify_password(request.password, user.password_hash) or not user.is_active:
             raise InvalidCredentialsError("Invalid email or password")
 
-        try:
-            employee = self.get_employee_for_user(session, user)
-        except InvalidAuthenticatedEmployeeError:
-            raise InvalidCredentialsError("Invalid email or password") from None
-        if not employee.is_active:
-            raise InvalidCredentialsError("Invalid email or password")
-
+        # Authentication is account-based. A user does not need an Employee
+        # record to log in; employee linkage is optional and only applies to
+        # employee-specific operations.
         return create_access_token(user.id)
 
     def get_user_from_access_token(self, session: Session, token: str) -> User:

@@ -31,13 +31,12 @@ import {
   searchCustomers,
 } from '../api/customerApi'
 import type { Customer } from '../api/customerApi'
-import {
-  buildSaleItemPayload,
-  isProductInCart,
-} from './saleItemPayload'
+import { buildSaleItemPayload } from './saleItemPayload'
 import {
   fetchProductPromotions,
   fetchPromotionBenefitGroups,
+  fetchPromotions,
+  fetchPromotionProducts,
 } from '../api/promotionApi'
 import type { ProductPromotion, PromotionSaleGroup } from '../api/promotionApi'
 
@@ -228,12 +227,49 @@ export default function Sales() {
       }
 
       try {
-        const [priceResponse, inventoryResponse, promotionResponse] =
-          await Promise.all([
-            fetchCurrentProductPrice(selectedProductId),
-            fetchProductAvailability(selectedProductId, Number(storeId)),
-            fetchProductPromotions(selectedProductId),
-          ])
+        const [priceResponse, inventoryResponse] = await Promise.all([
+          fetchCurrentProductPrice(selectedProductId),
+          fetchProductAvailability(selectedProductId, Number(storeId)),
+        ])
+
+        // Prefer the dedicated active-product endpoint. If it returns no
+        // rows, reconcile against Promotion Master and its product assignments.
+        // This avoids hiding an active promotion just because the lookup endpoint
+        // failed to return an otherwise-valid product/promotion association.
+        let promotionResponse: ProductPromotion[] = []
+        try {
+          promotionResponse = await fetchProductPromotions(selectedProductId)
+        } catch {
+          // Fall back to Promotion Master below if the dedicated lookup fails.
+        }
+        if (promotionResponse.length === 0) {
+          const promotions = await fetchPromotions()
+          const now = new Date()
+          const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+          const assigned = await Promise.all(
+            promotions
+              .filter((promotion) =>
+                promotion.is_active &&
+                promotion.valid_from <= today &&
+                promotion.valid_to >= today
+              )
+              .map(async (promotion) => {
+                const assignedProducts = await fetchPromotionProducts(promotion.id)
+                return assignedProducts.some(
+                  (entry) => entry.product_id === selectedProductId,
+                )
+                  ? ({
+                      id: promotion.id,
+                      name: promotion.name,
+                      cashback_amount: '0.00',
+                    } satisfies ProductPromotion)
+                  : null
+              }),
+          )
+          promotionResponse = assigned.filter(
+            (promotion): promotion is ProductPromotion => promotion !== null,
+          )
+        }
 
         if (cancelled) {
           return
@@ -464,13 +500,6 @@ export default function Sales() {
     if (quantity > availableQuantity) {
       setError(
         `Available quantity at ${selectedStore?.name ?? 'the selected store'} is ${availableQuantity}. Please reduce the requested quantity.`,
-      )
-      return
-    }
-
-    if (isProductInCart(items, selectedProduct.id)) {
-      setError(
-        `${selectedProduct.name} is already in this sale. Each product is added once, with a benefit chosen for each unit.`,
       )
       return
     }
@@ -775,7 +804,7 @@ export default function Sales() {
         <section className="form-section">
           <div className="section-header">
             <div>
-              <h2>Sale Details</h2>
+              <h2>1. Sale Details</h2>
               <p>
                 Select the selling store and the customer for the sale.
               </p>
@@ -997,7 +1026,7 @@ export default function Sales() {
         <section className="form-section">
           <div className="section-header">
             <div>
-              <h2>Add Product</h2>
+              <h2>2. Add Products</h2>
               <p>
                 Select a product to view availability, price, and the
                 backend-authoritative sales rules.
@@ -1375,7 +1404,7 @@ export default function Sales() {
           <section className="form-section">
             <div className="section-header">
               <div>
-                <h2>Sale Summary</h2>
+                <h2>3. Sale Summary</h2>
                 <p>Totals are supplied by the backend and remain authoritative.</p>
               </div>
             </div>
@@ -1497,7 +1526,7 @@ export default function Sales() {
           <section className="form-section">
             <div className="section-header">
               <div>
-                <h2>Offline Payment</h2>
+                <h2>4. Offline Payment</h2>
                 <p>Record one or more payments against the payable amount.</p>
               </div>
             </div>
@@ -1526,6 +1555,7 @@ export default function Sales() {
                   <option value="CARD">Card</option>
                   <option value="BANK_TRANSFER">Bank Transfer</option>
                   <option value="CHEQUE">Cheque</option>
+                  <option value="BAJAJ_FINANCE">Bajaj Finance</option>
                 </select>
               </label>
               <label>

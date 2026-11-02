@@ -88,3 +88,33 @@ def require_permission(permission_code: str):
 
     permission_dependency.__name__ = f"require_{permission_code}_permission"
     return permission_dependency
+
+
+def require_any_permission(*permission_codes: str):
+    """Authorize an operation when the user has any listed existing permission."""
+    if not permission_codes or any(not code for code in permission_codes):
+        raise ValueError("At least one permission code is required")
+
+    def permission_dependency(
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_auth_db),
+    ) -> None:
+        authorization = AuthorizationService()
+        for permission_code in permission_codes:
+            try:
+                authorization.require_permission(
+                    session, current_user, permission_code
+                )
+                return
+            except PermissionDeniedError:
+                continue
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied",
+        )
+
+    permission_dependency.__name__ = (
+        "require_any_" + "_or_".join(permission_codes) + "_permission"
+    )
+    return permission_dependency

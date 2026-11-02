@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant
+from app.api.dependencies import get_current_tenant, require_any_permission, require_permission
 from app.database.session import get_db
 from app.schemas.supplier import (
     SupplierCreate,
@@ -22,7 +22,7 @@ def _service() -> SupplierService:
     return SupplierService()
 
 
-@router.post("", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("suppliers.manage"))])
 def create_supplier(
     request: SupplierCreate,
     session: Session = Depends(get_db),
@@ -36,7 +36,7 @@ def create_supplier(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.get("", response_model=SupplierListResponse)
+@router.get("", response_model=SupplierListResponse, dependencies=[Depends(require_any_permission("suppliers.manage", "inventory.view", "inventory.manage"))])
 def list_suppliers(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -56,7 +56,7 @@ def list_suppliers(
     )
 
 
-@router.get("/{supplier_id}", response_model=SupplierResponse)
+@router.get("/{supplier_id}", response_model=SupplierResponse, dependencies=[Depends(require_permission("suppliers.manage"))])
 def get_supplier(
     supplier_id: int,
     session: Session = Depends(get_db),
@@ -70,7 +70,7 @@ def get_supplier(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@router.put("/{supplier_id}", response_model=SupplierResponse)
+@router.put("/{supplier_id}", response_model=SupplierResponse, dependencies=[Depends(require_permission("suppliers.manage"))])
 def update_supplier(
     supplier_id: int,
     request: SupplierUpdate,

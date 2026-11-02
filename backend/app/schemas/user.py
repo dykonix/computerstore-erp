@@ -18,4 +18,6 @@ class UserIdentityUpdate(BaseModel):
 
     email: str | None = None
     mobile: str | None = None
+    # Optional: omitted or blank means leave the current password unchanged.
+    password: str | None = Field(default=None, max_length=256)
     employee_id: int | None = None

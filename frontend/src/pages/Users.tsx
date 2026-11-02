@@ -7,6 +7,7 @@ import {
   listUsers,
   removeRole,
   updateUser,
+  updateUserLocations,
   updateUserStatus,
 } from '../api/usersApi'
 import type { UserCreateRequest, UserFormData, UserRecord } from '../api/usersApi'
@@ -31,7 +32,7 @@ export default function Users() {
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
-  const [editForm, setEditForm] = useState<{ email: string; mobile: string; employee_id: number | null }>({ email: '', mobile: '', employee_id: null })
+  const [editForm, setEditForm] = useState<{ email: string; mobile: string; password: string; employee_id: number | null; role_ids: number[]; store_ids: number[]; godown_ids: number[] }>({ email: '', mobile: '', password: '', employee_id: null, role_ids: [], store_ids: [], godown_ids: [] })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -70,8 +71,11 @@ export default function Users() {
     setError('')
     setNotice('')
     try {
-      const created = await createUser(form)
-      setUsers((current) => [...current, created].sort((a, b) => a.username.localeCompare(b.username)))
+      // Location assignments belong directly to the user and do not require an employee link.
+      await createUser(form)
+      // Reload both users and form data so the store/godown checkboxes reflect
+      // the assignments that were just persisted by the backend.
+      await reload()
       setForm(emptyForm)
       setShowCreate(false)
       setNotice('User account created with the selected role assignments.')
@@ -84,7 +88,15 @@ export default function Users() {
 
   function startEditing(user: UserRecord) {
     setEditingUser(user)
-    setEditForm({ email: user.email, mobile: user.mobile, employee_id: user.employee_id })
+    setEditForm({
+      email: user.email,
+      mobile: user.mobile,
+      password: '',
+      employee_id: user.employee_id,
+      role_ids: [...user.role_ids],
+      store_ids: [...user.store_ids],
+      godown_ids: [...user.godown_ids],
+    })
     setShowCreate(false)
     setError('')
     setNotice('')
@@ -97,10 +109,37 @@ export default function Users() {
     setError('')
     setNotice('')
     try {
-      const updated = await updateUser(editingUser.id, editForm)
-      setUsers((current) => current.map((item) => item.id === updated.id ? updated : item))
+      // Location assignments are keyed directly to the user; employee linking is unrelated.
+      const updatePayload: { email: string; mobile: string; password?: string; employee_id: number | null } = {
+        email: editForm.email,
+        mobile: editForm.mobile,
+        employee_id: editForm.employee_id,
+      }
+      if (editForm.password.trim()) updatePayload.password = editForm.password
+      await updateUser(editingUser.id, updatePayload)
+      if (currentUser?.id !== editingUser.id && hasPermission('roles.manage')) {
+        const originalRoleIds = new Set(editingUser.role_ids)
+        const nextRoleIds = new Set(editForm.role_ids)
+        for (const roleId of editForm.role_ids.filter((id) => !originalRoleIds.has(id))) {
+          await assignRole(editingUser.id, roleId)
+        }
+        for (const roleId of editingUser.role_ids.filter((id) => !nextRoleIds.has(id))) {
+          await removeRole(editingUser.id, roleId)
+        }
+      }
+      if (hasPermission('employees.manage')) {
+        await updateUserLocations(editingUser.id, {
+          store_ids: editForm.store_ids,
+          godown_ids: editForm.godown_ids,
+        })
+      }
+      // Refresh both user records and user-based location assignments.
+      // This prevents the next edit from showing stale store/godown selections.
+      await reload()
       setEditingUser(null)
-      setNotice('User details updated.')
+      setNotice(hasPermission('employees.manage')
+        ? 'User details, role assignments and location assignments updated.'
+        : 'User details and role assignments updated.')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to update user details.')
     } finally {
@@ -143,9 +182,20 @@ export default function Users() {
       <div className="page-title-row">
         <div>
           <h1>Users</h1>
-          <p className="page-description">Manage sign-in accounts, employee links and role assignments.</p>
+          <p className="page-description">Manage tenant user accounts, roles and access assignments.</p>
         </div>
-        <button className="primary-button" type="button" onClick={() => { setShowCreate((value) => !value); setError(''); setNotice('') }}>
+        <button className="primary-button" type="button" onClick={() => {
+            if (showCreate) {
+              setShowCreate(false)
+              setForm(emptyForm)
+              setNotice('User creation cancelled.')
+            } else {
+              setShowCreate(true)
+              setEditingUser(null)
+              setError('')
+              setNotice('')
+            }
+          }}>
           {showCreate ? 'Cancel' : 'Create user'}
         </button>
       </div>
@@ -159,10 +209,68 @@ export default function Users() {
           <div className="form-grid">
             <label><span>Email</span><input required type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} /></label>
             <label><span>Mobile</span><input required value={editForm.mobile} onChange={(event) => setEditForm({ ...editForm, mobile: event.target.value })} /></label>
-            <label className="form-grid__full"><span>Linked employee</span><select value={editForm.employee_id ?? ''} onChange={(event) => setEditForm({ ...editForm, employee_id: event.target.value ? Number(event.target.value) : null })}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
+            <label className="form-grid__full"><span>New password (leave blank to keep current password)</span><input type="password" minLength={12} autoComplete="new-password" value={editForm.password} onChange={(event) => setEditForm({ ...editForm, password: event.target.value })} /></label>
+            <label className="form-grid__full"><span>Linked employee</span><select value={editForm.employee_id ?? ''} onChange={(event) => {
+              const employeeId = event.target.value ? Number(event.target.value) : null
+              setEditForm({
+                ...editForm,
+                employee_id: employeeId,
+                store_ids: employeeId === null ? [] : formData.stores.filter((store) => store.user_ids.includes(currentUser?.id ?? -1)).map((store) => store.id),
+                godown_ids: employeeId === null ? [] : formData.godowns.filter((godown) => godown.user_ids.includes(currentUser?.id ?? -1)).map((godown) => godown.id),
+              })
+            }}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
+            <div className="form-grid__full">
+              <span className="field-label">Role assignments</span>
+              <p className="field-help">{currentUser?.id === editingUser.id ? 'You cannot change your own role assignments.' : 'Select the roles this user should have.'}</p>
+              <div className="permission-list">
+                {formData.roles.map((role) => (
+                  <label className="permission-checkbox" key={role.id}>
+                    <input type="checkbox" checked={editForm.role_ids.includes(role.id)} disabled={currentUser?.id === editingUser.id || !hasPermission('roles.manage')} onChange={(event) => setEditForm({
+                      ...editForm,
+                      role_ids: event.target.checked ? [...editForm.role_ids, role.id] : editForm.role_ids.filter((id) => id !== role.id),
+                    })} />
+                    <span><strong>{role.name}</strong></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="form-grid__full">
+              <span className="field-label">Store access</span>
+              <p className="field-help">Store access is assigned directly to this user.</p>
+              <div className="permission-list">
+                {formData.stores.map((store) => (
+                  <label className="permission-checkbox" key={store.id}>
+                    <input type="checkbox" disabled={!hasPermission('employees.manage')} checked={editForm.store_ids.includes(store.id)} onChange={(event) => setEditForm({
+                      ...editForm,
+                      store_ids: event.target.checked ? [...editForm.store_ids, store.id] : editForm.store_ids.filter((id) => id !== store.id),
+                    })} />
+                    <span><strong>{store.name}</strong></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="form-grid__full">
+              <span className="field-label">Godown access</span>
+              <p className="field-help">Godown access is assigned directly to this user.</p>
+              <div className="permission-list">
+                {formData.godowns.map((godown) => (
+                  <label className="permission-checkbox" key={godown.id}>
+                    <input type="checkbox" disabled={!hasPermission('employees.manage')} checked={editForm.godown_ids.includes(godown.id)} onChange={(event) => setEditForm({
+                      ...editForm,
+                      godown_ids: event.target.checked ? [...editForm.godown_ids, godown.id] : editForm.godown_ids.filter((id) => id !== godown.id),
+                    })} />
+                    <span><strong>{godown.name}</strong></span>
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
           <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
-          <button className="secondary-button" type="button" onClick={() => setEditingUser(null)}>Cancel</button>
+          <button className="secondary-button" type="button" onClick={() => {
+            setEditingUser(null)
+            setNotice('Editing cancelled. No changes were saved.')
+            setError('')
+          }}>Cancel</button>
         </form>
       )}
 
@@ -179,10 +287,10 @@ export default function Users() {
                 ...form,
                 employee_id: employeeId,
                 store_ids: employeeId === null || !hasPermission('employees.manage') ? null : formData.stores
-                  .filter((store) => store.employee_ids.includes(employeeId))
+                  .filter((store) => store.user_ids.includes(currentUser?.id ?? -1))
                   .map((store) => store.id),
                 godown_ids: employeeId === null || !hasPermission('employees.manage') ? null : formData.godowns
-                  .filter((godown) => godown.employee_ids.includes(employeeId))
+                  .filter((godown) => godown.user_ids.includes(currentUser?.id ?? -1))
                   .map((godown) => godown.id),
               })
             }}><option value="">No employee linked</option>{formData.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name || employee.email} — {employee.email}</option>)}</select></label>
@@ -209,12 +317,9 @@ export default function Users() {
             </div>}
             <div className="form-grid__full">
               <span className="field-label">Store access</span>
-              <p className="field-help">Store-scoped permissions use the linked employee's store assignments. Selecting stores here sets that employee's assigned stores. Existing assignments are preselected.</p>
+              <p className="field-help">Select the stores this user can access.</p>
               {!hasPermission('employees.manage') && (
-                <p className="field-help">Your account does not have permission to change employee store assignments.</p>
-              )}
-              {!form.employee_id && (
-                <p className="field-help">Link an employee to enable store assignment.</p>
+                <p className="field-help">Your account does not have permission to change store assignments.</p>
               )}
               <div className="permission-list">
                 {formData.stores.length === 0 ? (
@@ -223,7 +328,7 @@ export default function Users() {
                   <label className="permission-checkbox" key={store.id}>
                     <input
                       type="checkbox"
-                      disabled={!hasPermission('employees.manage') || !form.employee_id}
+                      disabled={!hasPermission('employees.manage')}
                       checked={(form.store_ids ?? []).includes(store.id)}
                       onChange={(event) => setForm({
                         ...form,
@@ -239,12 +344,9 @@ export default function Users() {
             </div>
             <div className="form-grid__full">
               <span className="field-label">Godown access</span>
-              <p className="field-help">Inventory location permissions can be limited to the godowns assigned to this employee. Selecting godowns here updates the employee's godown assignments.</p>
+              <p className="field-help">Select the godowns this user can access.</p>
               {!hasPermission('employees.manage') && (
-                <p className="field-help">Your account does not have permission to change employee godown assignments.</p>
-              )}
-              {!form.employee_id && (
-                <p className="field-help">Link an employee to enable godown assignment.</p>
+                <p className="field-help">Your account does not have permission to change godown assignments.</p>
               )}
               <div className="permission-list">
                 {formData.godowns.length === 0 ? (
@@ -253,7 +355,7 @@ export default function Users() {
                   <label className="permission-checkbox" key={godown.id}>
                     <input
                       type="checkbox"
-                      disabled={!hasPermission('employees.manage') || !form.employee_id}
+                      disabled={!hasPermission('employees.manage')}
                       checked={(form.godown_ids ?? []).includes(godown.id)}
                       onChange={(event) => setForm({
                         ...form,
@@ -271,11 +373,17 @@ export default function Users() {
           </div>
           <p className="field-help">The initial password is stored as a secure hash. Share it with the user through a separate secure channel.</p>
           <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create account'}</button>
+          <button className="secondary-button" type="button" disabled={saving} onClick={() => {
+            setShowCreate(false)
+            setForm(emptyForm)
+            setError('')
+            setNotice('User creation cancelled.')
+          }}>Cancel</button>
         </form>
       )}
 
       <div className="list-toolbar">
-        <label className="search-field"><span>Search users</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Username, email, employee or role" /></label>
+        <label className="search-field"><span>Search users</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Username, email or role" /></label>
         <span className="result-count">{filteredUsers.length} users</span>
       </div>
 

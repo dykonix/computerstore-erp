@@ -893,12 +893,75 @@ class SaleItemServiceTests(unittest.TestCase):
                 "Inactive products cannot be added to a sale",
             )
 
-    def test_duplicate_product_in_sale_is_rejected(self):
+    def test_update_sale_item_quantity_and_discount_recalculates_totals(self):
         with Session(self.engine) as session:
             user = session.get(User, self.user_id)
+            service = SaleService()
+            item = service.add_sale_item(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                product_id=self.product_id,
+                quantity=1,
+            )
 
+            updated = service.update_sale_item(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                sale_item_id=item.id,
+                quantity=2,
+                actual_unit_price=Decimal("48000.00"),
+            )
+
+            sale = session.get(Sale, self.sale_id)
+            self.assertEqual(updated.quantity, 2)
+            self.assertEqual(updated.actual_unit_price, Decimal("48000.00"))
+            self.assertEqual(updated.discount_amount, Decimal("4000.00"))
+            self.assertEqual(updated.line_total, Decimal("96000.00"))
+            self.assertEqual(sale.subtotal, Decimal("96000.00"))
+            self.assertEqual(sale.total_amount, Decimal("96000.00"))
+
+    def test_duplicate_product_with_same_price_configuration_increases_quantity(self):
+        with Session(self.engine) as session:
+            user = session.get(User, self.user_id)
             service = SaleService()
 
+            first = service.add_sale_item(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                product_id=self.product_id,
+                quantity=1,
+            )
+            second = service.add_sale_item(
+                session=session,
+                current_user=user,
+                sale_id=self.sale_id,
+                product_id=self.product_id,
+                quantity=2,
+            )
+
+            self.assertEqual(first.id, second.id)
+            self.assertEqual(second.quantity, 3)
+            self.assertEqual(
+                len(
+                    list(
+                        session.scalars(
+                            select(SaleItem).where(
+                                SaleItem.sale_id == self.sale_id,
+                                SaleItem.is_promotion_benefit.is_(False),
+                            )
+                        )
+                    )
+                ),
+                1,
+            )
+
+    def test_duplicate_product_with_different_price_configuration_is_rejected(self):
+        with Session(self.engine) as session:
+            user = session.get(User, self.user_id)
+            service = SaleService()
             service.add_sale_item(
                 session=session,
                 current_user=user,
@@ -914,20 +977,11 @@ class SaleItemServiceTests(unittest.TestCase):
                     sale_id=self.sale_id,
                     product_id=self.product_id,
                     quantity=1,
+                    actual_unit_price=Decimal("49000.00"),
+                    minimum_price_override=True,
                 )
 
-            self.assertEqual(
-                str(context.exception),
-                "Product is already present in this sale",
-            )
-
-            item_count = session.scalar(
-                select(SaleItem).where(
-                    SaleItem.sale_id == self.sale_id
-                )
-            )
-
-            self.assertIsNotNone(item_count)
+            self.assertIn("different price, discount, or promotion", str(context.exception))
 
 
 if __name__ == "__main__":

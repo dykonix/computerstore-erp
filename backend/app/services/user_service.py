@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.role import Role
 from app.models.user_role import UserRole
-from app.models.employee_store import EmployeeStore
-from app.models.employee_godown import EmployeeGodown
+from app.models.user_store import UserStore
+from app.models.user_godown import UserGodown
 from app.models.godown import Godown
 from app.models.store import Store
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserIdentityCreate, UserIdentityUpdate
+from app.security.password import hash_password
 
 
 _EMAIL_PATTERN = re.compile(
@@ -84,10 +85,6 @@ class UserIdentityService:
                 store_ids = list(dict.fromkeys(request.store_ids or []))
                 if request.store_ids is not None and len(store_ids) != len(request.store_ids):
                     raise UserIdentityError("Each store can be selected only once")
-                if request.store_ids is not None and store_ids and request.employee_id is None:
-                    raise UserIdentityError(
-                        "Link an employee before assigning store access"
-                    )
                 stores = []
                 if store_ids:
                     stores = list(
@@ -106,8 +103,6 @@ class UserIdentityService:
                 godown_ids = list(dict.fromkeys(request.godown_ids or []))
                 if request.godown_ids is not None and len(godown_ids) != len(request.godown_ids):
                     raise UserIdentityError("Each godown can be selected only once")
-                if request.godown_ids is not None and godown_ids and request.employee_id is None:
-                    raise UserIdentityError("Link an employee before assigning godown access")
                 godowns = []
                 if godown_ids:
                     godowns = list(session.scalars(
@@ -150,29 +145,29 @@ class UserIdentityService:
                 session.flush()
                 for role in roles:
                     session.add(UserRole(user_id=user.id, role_id=role.id))
-                if request.employee_id is not None and request.store_ids is not None:
+                if request.store_ids is not None:
                     session.execute(
-                        delete(EmployeeStore).where(
-                            EmployeeStore.employee_id == request.employee_id
+                        delete(UserStore).where(
+                            UserStore.user_id == user.id
                         )
                     )
                     for store in stores:
                         session.add(
-                            EmployeeStore(
-                                employee_id=request.employee_id,
+                            UserStore(
+                                user_id=user.id,
                                 store_id=store.id,
                             )
                         )
-                if request.employee_id is not None and request.godown_ids is not None:
+                if request.godown_ids is not None:
                     session.execute(
-                        delete(EmployeeGodown).where(
-                            EmployeeGodown.employee_id == request.employee_id
+                        delete(UserGodown).where(
+                            UserGodown.user_id == user.id
                         )
                     )
                     for godown in godowns:
                         session.add(
-                            EmployeeGodown(
-                                employee_id=request.employee_id,
+                            UserGodown(
+                                user_id=user.id,
                                 godown_id=godown.id,
                             )
                         )
@@ -191,6 +186,12 @@ class UserIdentityService:
         request: UserIdentityUpdate,
     ) -> User:
         updates = request.model_dump(exclude_unset=True)
+        # Blank/omitted password means no password change. Never store plaintext.
+        password = updates.pop("password", None)
+        if password is not None and password.strip():
+            if len(password) < 12:
+                raise UserIdentityError("Password must be at least 12 characters")
+            updates["password_hash"] = hash_password(password)
         if not updates:
             raise UserIdentityError("At least one identity field must be provided")
         if "email" in updates:

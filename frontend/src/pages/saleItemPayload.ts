@@ -1,5 +1,5 @@
 import type { PromotionSaleGroup } from '../api/promotionApi'
-import type { AddSaleItemRequest, SaleItemResponse } from '../api/salesApi'
+import type { AddSaleItemRequest } from '../api/salesApi'
 
 export type FulfillmentSource = 'STORE' | 'MANUFACTURER'
 
@@ -50,7 +50,3 @@ export function buildSaleItemPayload(input: SaleItemPayloadInput): AddSaleItemRe
   return payload
 }
 
-// Benefit lines are separate sale lines; only a qualifying product line counts as "already added".
-export function isProductInCart(items: SaleItemResponse[], productId: number): boolean {
-  return items.some((item) => !item.is_promotion_benefit && item.product_id === productId)
-}

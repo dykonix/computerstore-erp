@@ -262,21 +262,21 @@ def provision(admin_password: str, sales_password: str) -> dict[str, int]:
             sales_assignments = list(
                 session.scalars(
                     select(EmployeeStore).where(
-                        EmployeeStore.employee_id == sales_employee.id
+                        EmployeeStore.user_id == sales.id
                     )
                 )
             )
             expected_sales_store_id = stores[SALES_STORE_NAME].id
             if any(item.store_id != expected_sales_store_id for item in sales_assignments):
                 raise ProvisioningConflict(
-                    "Sales Employee has existing Store assignments outside HP World SBP"
+                    "Sales user has existing Store assignments outside HP World SBP"
                 )
             if not any(
                 item.store_id == expected_sales_store_id for item in sales_assignments
             ):
                 session.add(
                     EmployeeStore(
-                        employee_id=sales_employee.id,
+                        user_id=sales.id,
                         store_id=expected_sales_store_id,
                     )
                 )

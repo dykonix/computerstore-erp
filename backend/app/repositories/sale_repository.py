@@ -82,6 +82,21 @@ class SaleRepository:
 
         return session.scalar(statement)
 
+    def get_sale_item(
+        self,
+        session: Session,
+        sale_id: int,
+        sale_item_id: int,
+        lock: bool = False,
+    ) -> SaleItem | None:
+        statement = select(SaleItem).where(
+            SaleItem.id == sale_item_id,
+            SaleItem.sale_id == sale_id,
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return session.scalar(statement)
+
     def get_sale_item_for_product(
         self,
         session: Session,

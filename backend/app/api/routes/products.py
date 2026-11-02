@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_tenant, get_current_user
+from app.api.dependencies import get_current_tenant, get_current_user, require_any_permission, require_permission
 from app.database.session import get_db
 from app.schemas.product import (
     AttributeOptionSummary,
@@ -33,7 +33,7 @@ def _service() -> ProductService:
     return ProductService()
 
 
-@router.get("/form-data", response_model=ProductFormDataResponse)
+@router.get("/form-data", response_model=ProductFormDataResponse, dependencies=[Depends(require_permission("products.manage"))])
 def get_product_form_data(
     session: Session = Depends(get_db),
     service: ProductService = Depends(_service),
@@ -76,7 +76,7 @@ def get_product_form_data(
     )
 
 
-@router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("products.manage"))])
 def create_product(
     request: ProductCreate,
     session: Session = Depends(get_db),
@@ -91,7 +91,7 @@ def create_product(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.get("", response_model=ProductListResponse)
+@router.get("", response_model=ProductListResponse, dependencies=[Depends(require_any_permission('products.manage', 'sell'))])
 def list_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -130,7 +130,7 @@ def list_products(
     )
 
 
-@router.put("/{product_id}", response_model=ProductResponse)
+@router.put("/{product_id}", response_model=ProductResponse, dependencies=[Depends(require_permission("products.manage"))])
 def update_product(
     product_id: int,
     request: ProductCreate,
@@ -148,7 +148,7 @@ def update_product(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.get("/{product_id}", response_model=ProductResponse)
+@router.get("/{product_id}", response_model=ProductResponse, dependencies=[Depends(require_any_permission('products.manage', 'sell'))])
 def get_product(
     product_id: int,
     session: Session = Depends(get_db),
@@ -162,7 +162,7 @@ def get_product(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
-@router.get("/{product_id}/prices/current", response_model=ProductPriceResponse)
+@router.get("/{product_id}/prices/current", response_model=ProductPriceResponse, dependencies=[Depends(require_any_permission('products.manage', 'sell'))])
 def get_current_product_price(
     product_id: int,
     session: Session = Depends(get_db),
@@ -180,6 +180,7 @@ def get_current_product_price(
     "/{product_id}/prices",
     response_model=ProductPriceResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permission("products.manage"))],
 )
 def create_product_price(
     product_id: int,
@@ -200,7 +201,8 @@ def create_product_price(
 
 
 @router.put(
-    "/{product_id}/prices/{price_id}", response_model=ProductPriceResponse
+    "/{product_id}/prices/{price_id}", response_model=ProductPriceResponse,
+    dependencies=[Depends(require_permission("products.manage"))],
 )
 def update_product_price(
     product_id: int,

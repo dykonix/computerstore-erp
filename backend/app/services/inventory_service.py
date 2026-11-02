@@ -36,10 +36,47 @@ class InventoryService:
                 raise InventoryValidationError("Store does not exist in the current tenant")
             if request.godown_id is not None and self.repository.get_godown(session, tenant_id, request.godown_id) is None:
                 raise InventoryValidationError("Godown does not exist in the current tenant")
-            if self.repository.get_inventory_at_location(session, tenant_id, request.product_id, request.store_id, request.godown_id) is not None:
-                raise InventoryValidationError("Inventory balance already exists at this location")
-            inventory = self.repository.add_inventory(session, Inventory(tenant_id=tenant_id, product_id=request.product_id, store_id=request.store_id, godown_id=request.godown_id, quantity=request.quantity, reserved_quantity=0, cost_price=request.cost_price))
-            self.repository.add_movement(session, InventoryMovement(tenant_id=tenant_id, product_id=request.product_id, supplier_id=supplier.id, movement_type="OPENING", quantity=request.quantity, to_store_id=request.store_id, to_godown_id=request.godown_id))
+            inventory = self.repository.get_inventory_at_location(
+                session,
+                tenant_id,
+                request.product_id,
+                request.store_id,
+                request.godown_id,
+                lock=True,
+            )
+            if inventory is None:
+                inventory = self.repository.add_inventory(
+                    session,
+                    Inventory(
+                        tenant_id=tenant_id,
+                        product_id=request.product_id,
+                        store_id=request.store_id,
+                        godown_id=request.godown_id,
+                        quantity=request.quantity,
+                        reserved_quantity=0,
+                        cost_price=request.cost_price,
+                    ),
+                )
+            else:
+                # Repeated stock receipts increase the existing location balance.
+                # Cost-price layers are not part of this change; preserve the
+                # existing balance cost price rather than rewriting its history.
+                self.repository.adjust_inventory_quantity(
+                    session, tenant_id, inventory, request.quantity
+                )
+
+            self.repository.add_movement(
+                session,
+                InventoryMovement(
+                    tenant_id=tenant_id,
+                    product_id=request.product_id,
+                    supplier_id=supplier.id,
+                    movement_type="OPENING",
+                    quantity=request.quantity,
+                    to_store_id=request.store_id,
+                    to_godown_id=request.godown_id,
+                ),
+            )
             return inventory
 
     def transfer_inventory(
